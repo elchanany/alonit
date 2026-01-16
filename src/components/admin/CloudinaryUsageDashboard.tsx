@@ -108,79 +108,79 @@ export default function CloudinaryUsageDashboard() {
             </div>
 
             {/* Storage Card */}
-            <div className={`bg-gray-800/60 backdrop-blur-sm rounded-2xl border p-6 ${\n                storageWarning ? 'border-orange-500/50' : 'border-gray-700/50'\n            }`}>
-            <div className="flex items-center gap-3 mb-4">
-                <HardDrive className={storageWarning ? 'text-orange-400' : 'text-indigo-400'} size={24} />
-                <h3 className="text-lg font-bold text-white">אחסון</h3>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="mb-3">
-                <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-400">
-                        {formatBytes(usage.storage.used)} / {formatBytes(usage.storage.total)}
-                    </span>
-                    <span className={storageWarning ? 'text-orange-400 font-bold' : 'text-gray-400'}>
-                        {usage.storage.percentage.toFixed(1)}%
-                    </span>
+            <div className={`bg-gray-800/60 backdrop-blur-sm rounded-2xl border p-6 ${storageWarning ? 'border-orange-500/50' : 'border-gray-700/50'}`}>
+                <div className="flex items-center gap-3 mb-4">
+                    <HardDrive className={storageWarning ? 'text-orange-400' : 'text-indigo-400'} size={24} />
+                    <h3 className="text-lg font-bold text-white">אחסון</h3>
                 </div>
-                <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                        className={`h-full transition-all duration-500 ${storageWarning ? 'bg-orange-500' : 'bg-indigo-500'
-                            }`}
-                        style={{ width: `${Math.min(usage.storage.percentage, 100)}%` }}
-                    />
+
+                {/* Progress Bar */}
+                <div className="mb-3">
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-400">
+                            {formatBytes(usage.storage.used)} / {formatBytes(usage.storage.total)}
+                        </span>
+                        <span className={storageWarning ? 'text-orange-400 font-bold' : 'text-gray-400'}>
+                            {usage.storage.percentage.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                            className={`h-full transition-all duration-500 ${storageWarning ? 'bg-orange-500' : 'bg-indigo-500'
+                                }`}
+                            style={{ width: `${Math.min(usage.storage.percentage, 100)}%` }}
+                        />
+                    </div>
                 </div>
+
+                {storageWarning && (
+                    <div className="bg-orange-900/30 border border-orange-500/30 rounded-lg p-3 mb-3">
+                        <p className="text-orange-300 text-sm flex items-center gap-2">
+                            <AlertCircle size={16} />
+                            אחסון מלא! מומלץ להריץ ניקוי
+                        </p>
+                    </div>
+                )}
             </div>
 
-            {storageWarning && (
-                <div className="bg-orange-900/30 border border-orange-500/30 rounded-lg p-3 mb-3">
-                    <p className="text-orange-300 text-sm flex items-center gap-2">
-                        <AlertCircle size={16} />
-                        אחסון מלא! מומלץ להריץ ניקוי
-                    </p>
+            {/* Bandwidth Card */}
+            <div className={`bg-gray-800/60 backdrop-blur-sm rounded-2xl border p-6 ${bandwidthWarning ? 'border-orange-500/50' : 'border-gray-700/50'
+                }`}>
+                <div className="flex items-center gap-3 mb-4">
+                    <TrendingUp className={bandwidthWarning ? 'text-orange-400' : 'text-purple-400'} size={24} />
+                    <h3 className="text-lg font-bold text-white">Bandwidth (חודש נוכחי)</h3>
                 </div>
-            )}
-        </div>
 
-            {/* Bandwidth Card */ }
-    <div className={`bg-gray-800/60 backdrop-blur-sm rounded-2xl border p-6 ${bandwidthWarning ? 'border-orange-500/50' : 'border-gray-700/50'
-        }`}>
-        <div className="flex items-center gap-3 mb-4">
-            <TrendingUp className={bandwidthWarning ? 'text-orange-400' : 'text-purple-400'} size={24} />
-            <h3 className="text-lg font-bold text-white">Bandwidth (חודש נוכחי)</h3>
-        </div>
+                {/* Progress Bar */}
+                <div className="mb-3">
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-400">
+                            {formatBytes(usage.bandwidth.used)} / {formatBytes(usage.bandwidth.total)}
+                        </span>
+                        <span className={bandwidthWarning ? 'text-orange-400 font-bold' : 'text-gray-400'}>
+                            {usage.bandwidth.percentage.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                            className={`h-full transition-all duration-500 ${bandwidthWarning ? 'bg-orange-500' : 'bg-purple-500'
+                                }`}
+                            style={{ width: `${Math.min(usage.bandwidth.percentage, 100)}%` }}
+                        />
+                    </div>
+                </div>
 
-        {/* Progress Bar */}
-        <div className="mb-3">
-            <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-400">
-                    {formatBytes(usage.bandwidth.used)} / {formatBytes(usage.bandwidth.total)}
-                </span>
-                <span className={bandwidthWarning ? 'text-orange-400 font-bold' : 'text-gray-400'}>
-                    {usage.bandwidth.percentage.toFixed(1)}%
-                </span>
+                {bandwidthWarning && (
+                    <div className="bg-orange-900/30 border border-orange-500/30 rounded-lg p-3">
+                        <p className="text-orange-300 text-sm flex items-center gap-2">
+                            <AlertCircle size={16} />
+                            Bandwidth כמעט מלא!
+                        </p>
+                    </div>
+                )}
             </div>
-            <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
-                <div
-                    className={`h-full transition-all duration-500 ${bandwidthWarning ? 'bg-orange-500' : 'bg-purple-500'
-                        }`}
-                    style={{ width: `${Math.min(usage.bandwidth.percentage, 100)}%` }}
-                />
-            </div>
-        </div>
 
-        {bandwidthWarning && (
-            <div className="bg-orange-900/30 border border-orange-500/30 rounded-lg p-3">
-                <p className="text-orange-300 text-sm flex items-center gap-2">
-                    <AlertCircle size={16} />
-                    Bandwidth כמעט מלא!
-                </p>
-            </div>
-        )}
-    </div>
-
-    {/* Cleanup Button */ }
+            {/* Cleanup Button */}
             <button
                 onClick={runCleanup}
                 disabled={cleaning || usage.storage.percentage < 50}

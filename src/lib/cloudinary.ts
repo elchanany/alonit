@@ -11,7 +11,7 @@ export default cloudinary;
 
 // Helper function to upload file
 export async function uploadToCloudinary(
-    file: Buffer | string,
+    file: string,
     folder: string = 'chat',
     resourceType: 'image' | 'video' | 'raw' | 'auto' = 'auto'
 ): Promise<{ url: string; publicId: string; duration?: number }> {
