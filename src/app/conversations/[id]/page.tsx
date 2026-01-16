@@ -3,8 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause } from 'lucide-react';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -136,10 +135,21 @@ export default function ChatPage() {
     };
 
     const uploadImage = async (file: File): Promise<string> => {
-        const fileName = `chat/${conversationId}/${Date.now()}_${file.name}`;
-        const storageRef = ref(storage, fileName);
-        await uploadBytes(storageRef, file);
-        return getDownloadURL(storageRef);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', 'image');
+
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || 'Upload failed');
+        }
+
+        return data.url;
     };
 
     // Voice recording functions
@@ -185,10 +195,22 @@ export default function ChatPage() {
     };
 
     const uploadAudio = async (blob: Blob): Promise<string> => {
-        const fileName = `chat/${conversationId}/audio_${Date.now()}.webm`;
-        const storageRef = ref(storage, fileName);
-        await uploadBytes(storageRef, blob);
-        return getDownloadURL(storageRef);
+        const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', 'audio');
+
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || 'Upload failed');
+        }
+
+        return data.url;
     };
 
     const formatDuration = (seconds: number): string => {
