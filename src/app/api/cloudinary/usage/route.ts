@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import {
-    get
-
-CloudinaryUsage
-} from '@/lib/cloudinary';
+import { getCloudinaryUsage } from '@/lib/cloudinary';
 
 export async function GET() {
     try {

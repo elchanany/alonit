@@ -189,10 +189,23 @@ export function QuestionCard({
             return;
         }
         try {
+            // First, delete all answers
+            const answersRef = collection(db, 'questions', id, 'answers');
+            const answersSnapshot = await getDocs(answersRef);
+
+            // Delete each answer
+            const deletePromises = answersSnapshot.docs.map(answerDoc =>
+                deleteDoc(doc(db, 'questions', id, 'answers', answerDoc.id))
+            );
+            await Promise.all(deletePromises);
+
+            // Then delete the question itself
             await deleteDoc(doc(db, 'questions', id));
+
             showToast('השאלה נמחקה', 'success');
             if (onDelete) onDelete();
         } catch (error) {
+            console.error('Error deleting question:', error);
             showToast('שגיאה במחיקת השאלה', 'error');
         }
     };
