@@ -89,19 +89,9 @@ export function Header() {
                 {/* Mobile Icons (only on mobile) */}
                 <div className="flex md:hidden items-center gap-2">
                     {user ? (
-                        <>
-                            <Link href="/notifications" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors relative">
-                                <Bell size={20} />
-                                {unreadCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                                        {unreadCount > 9 ? '9+' : unreadCount}
-                                    </span>
-                                )}
-                            </Link>
-                            <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors">
-                                <Settings size={20} />
-                            </Link>
-                        </>
+                        <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                            <Settings size={20} />
+                        </Link>
                     ) : (
                         <Link href="/login" className="text-sm font-medium text-white">
                             <LogIn size={20} />
