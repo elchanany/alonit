@@ -40,7 +40,7 @@ export function MobileNav() {
         { href: '/', icon: Home, label: 'ראשי' },
         { href: '/conversations', icon: MessageCircle, label: "צ'אט" },
         { href: '/ask', icon: PlusCircle, label: 'שאל', isMain: true },
-        { href: '/notifications', icon: Bell, label: 'התראות', badge: unreadCount },
+        { href: '/notifications', icon: Bell, badge: unreadCount, hideLabel: true }, // Hide label!
         { href: '/user/me', icon: User, label: 'פרופיל' },
     ] : [
         { href: '/', icon: Home, label: 'ראשי' },
@@ -62,7 +62,7 @@ export function MobileNav() {
                         }`}
                 >
                     {item.isMain ? (
-                        <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg -mt-6 border-2 border-indigo-400">
+                        <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg -mt-6 border-2 border-indigo-400 -ml-1">
                             <item.icon size={28} strokeWidth={2} />
                         </div>
                     ) : (
@@ -75,7 +75,9 @@ export function MobileNav() {
                                     </div>
                                 )}
                             </div>
-                            <span className="text-[10px] font-medium">{item.label}</span>
+                            {!item.hideLabel && (
+                                <span className="text-[10px] font-medium">{item.label}</span>
+                            )}
                         </>
                     )}
                 </Link>

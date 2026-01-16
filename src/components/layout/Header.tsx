@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Search, Bell, User, Settings, LogIn } from 'lucide-react';
+import { Search, Bell, User, Settings, LogIn, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -59,6 +59,10 @@ export function Header() {
 
                     {user ? (
                         <>
+                            <Link href="/conversations" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10">
+                                <MessageCircle size={18} />
+                                צ'אטים
+                            </Link>
                             <Link href="/notifications" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors relative">
                                 <Bell size={20} />
                                 {unreadCount > 0 && (
@@ -82,21 +86,25 @@ export function Header() {
                     )}
                 </nav>
 
-                {/* Mobile Icons */}
-                <div className="flex md:hidden items-center gap-3">
+                {/* Mobile Icons (only on mobile) */}
+                <div className="flex md:hidden items-center gap-2">
                     {user ? (
-                        <Link href="/notifications" className="p-1 relative">
-                            <Bell size={20} className="text-gray-400 hover:text-white" />
-                            {unreadCount > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full min-w-[16px] text-center leading-none">
-                                    {unreadCount > 9 ? '9+' : unreadCount}
-                                </span>
-                            )}
-                        </Link>
+                        <>
+                            <Link href="/notifications" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors relative">
+                                <Bell size={20} />
+                                {unreadCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                        {unreadCount > 9 ? '9+' : unreadCount}
+                                    </span>
+                                )}
+                            </Link>
+                            <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                                <Settings size={20} />
+                            </Link>
+                        </>
                     ) : (
-                        <Link href="/login" className="flex items-center gap-1 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-full transition-colors">
-                            <LogIn size={14} />
-                            התחבר
+                        <Link href="/login" className="text-sm font-medium text-white">
+                            <LogIn size={20} />
                         </Link>
                     )}
                 </div>
