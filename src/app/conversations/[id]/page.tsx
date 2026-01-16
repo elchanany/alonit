@@ -73,15 +73,21 @@ export default function ChatPage() {
 
     // Scroll to bottom only when new messages arrive, not on page load
     const isFirstLoad = useRef(true);
+    const prevMessageCount = useRef(0);
+
     useEffect(() => {
-        if (isFirstLoad.current) {
-            isFirstLoad.current = false;
-            // On first load, scroll without animation
-            messagesEndRef.current?.scrollIntoView({ block: 'nearest' });
-        } else {
-            scrollToBottom();
+        // Only scroll if message count changed (new message added)
+        if (messages.length !== prevMessageCount.current) {
+            if (isFirstLoad.current) {
+                isFirstLoad.current = false;
+                // On first load, scroll without animation
+                messagesEndRef.current?.scrollIntoView({ block: 'nearest' });
+            } else {
+                scrollToBottom();
+            }
+            prevMessageCount.current = messages.length;
         }
-    }, [messages]);
+    }, [messages.length]); // Only depend on length, not entire messages array
 
     // Fetch conversation details
     useEffect(() => {
@@ -135,21 +141,33 @@ export default function ChatPage() {
     };
 
     const uploadImage = async (file: File): Promise<string> => {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('type', 'image');
+        console.log('🖼️ Starting image upload...', file.name, file.size);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', 'image');
 
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
+            console.log('📤 Sending to /api/upload...');
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
 
-        const data = await response.json();
-        if (!data.success) {
-            throw new Error(data.error || 'Upload failed');
+            console.log('📥 Response status:', response.status);
+            const data = await response.json();
+            console.log('📦 Response data:', data);
+
+            if (!data.success) {
+                console.error('❌ Upload failed:', data.error);
+                throw new Error(data.error || 'Upload failed');
+            }
+
+            console.log('✅ Image uploaded successfully:', data.url);
+            return data.url;
+        } catch (error) {
+            console.error('💥 Upload error:', error);
+            throw error;
         }
-
-        return data.url;
     };
 
     // Voice recording functions
@@ -195,22 +213,34 @@ export default function ChatPage() {
     };
 
     const uploadAudio = async (blob: Blob): Promise<string> => {
-        const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('type', 'audio');
+        console.log('🎙️ Starting audio upload...', blob.size, 'bytes');
+        try {
+            const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', 'audio');
 
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
+            console.log('📤 Sending audio to /api/upload...');
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
 
-        const data = await response.json();
-        if (!data.success) {
-            throw new Error(data.error || 'Upload failed');
+            console.log('📥 Audio response status:', response.status);
+            const data = await response.json();
+            console.log('📦 Audio response data:', data);
+
+            if (!data.success) {
+                console.error('❌ Audio upload failed:', data.error);
+                throw new Error(data.error || 'Upload failed');
+            }
+
+            console.log('✅ Audio uploaded successfully:', data.url);
+            return data.url;
+        } catch (error) {
+            console.error('💥 Audio upload error:', error);
+            throw error;
         }
-
-        return data.url;
     };
 
     const formatDuration = (seconds: number): string => {
@@ -228,25 +258,39 @@ export default function ChatPage() {
             return;
         }
 
+        // Save message content before clearing
+        const messageText = newMessage.trim();
+        const fileToUpload = selectedFile;
+        const audioToUpload = audioBlob;
+        const replyData = replyingTo;
+
+        // Clear UI immediately for better UX
+        setNewMessage('');
+        setSelectedFile(null);
+        setPreviewImage(null);
+        setAudioBlob(null);
+        setRecordingDuration(0);
+        setReplyingTo(null);
+
         setSending(true);
         try {
             let imageUrl: string | undefined;
             let audioUrl: string | undefined;
 
-            if (selectedFile) {
+            if (fileToUpload) {
                 setUploadingImage(true);
-                imageUrl = await uploadImage(selectedFile);
+                imageUrl = await uploadImage(fileToUpload);
                 setUploadingImage(false);
             }
 
-            if (audioBlob) {
-                audioUrl = await uploadAudio(audioBlob);
+            if (audioToUpload) {
+                audioUrl = await uploadAudio(audioToUpload);
             }
 
             const messageData: any = {
                 senderId: user.uid,
                 senderName: user.displayName || 'משתמש',
-                content: newMessage.trim() || (imageUrl ? '📷 תמונה' : audioUrl ? '🎙️ הקלטה קולית' : ''),
+                content: messageText || (imageUrl ? '📷 תמונה' : audioUrl ? '🎙️ הקלטה קולית' : ''),
                 createdAt: serverTimestamp()
             };
 
@@ -259,10 +303,10 @@ export default function ChatPage() {
                 messageData.audioDuration = recordingDuration;
             }
 
-            if (replyingTo) {
-                messageData.replyToId = replyingTo.id;
-                messageData.replyToContent = replyingTo.content.substring(0, 50) + (replyingTo.content.length > 50 ? '...' : '');
-                messageData.replyToSender = replyingTo.senderName;
+            if (replyData) {
+                messageData.replyToId = replyData.id;
+                messageData.replyToContent = replyData.content.substring(0, 50) + (replyData.content.length > 50 ? '...' : '');
+                messageData.replyToSender = replyData.senderName;
             }
 
             await addDoc(collection(db, 'conversations', conversationId, 'messages'), messageData);
@@ -287,18 +331,14 @@ export default function ChatPage() {
                     });
                 }
             }
-
-            setNewMessage('');
-            setReplyingTo(null);
-            setPreviewImage(null);
-            setSelectedFile(null);
-            setAudioBlob(null);
-            setRecordingDuration(0);
         } catch (error) {
             console.error('Error sending message:', error);
             showToast('שגיאה בשליחת ההודעה', 'error');
+            // Restore message on error
+            setNewMessage(messageText);
+        } finally {
+            setSending(false);
         }
-        setSending(false);
     };
 
     const handleDeleteMessage = async (messageId: string) => {
@@ -381,8 +421,8 @@ export default function ChatPage() {
         : 'משתמש';
 
     return (
-        <div className="fixed inset-0 top-14 md:top-16 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4 z-0">
-            <div className="w-full max-w-md h-full max-h-[85vh] flex flex-col">
+        <div className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4 z-0">
+            <div className="w-full max-w-md h-full max-h-[85vh] md:max-h-[85vh] flex flex-col">
                 {/* Chat Card - matches site dark cards, narrower like TikTok */}
                 <div className="flex flex-col h-full bg-gray-800/60 backdrop-blur-sm rounded-2xl border border-gray-700/50 overflow-hidden shadow-2xl">
                     {/* Header - inside the card */}
@@ -497,9 +537,6 @@ export default function ChatPage() {
 
                                             <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-indigo-200/70' : 'text-gray-500'}`}>
                                                 <span className="text-[10px]">{formatMessageTime(msg.createdAt)}</span>
-                                                {isMine && !msg.deleted && (
-                                                    <span className="text-[10px]">✓✓</span>
-                                                )}
                                             </div>
                                         </div>
                                     </div>

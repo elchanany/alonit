@@ -320,8 +320,24 @@ export function QuestionCard({
             showToast('התחבר כדי לתת לייק', 'error');
             return;
         }
-        // Already liked this answer
+
+        // Toggle: If already liked, remove like
         if (likedAnswers.has(answerId)) {
+            try {
+                await updateDoc(doc(db, 'questions', id, 'answers', answerId), {
+                    flowerCount: increment(-1)
+                });
+                setLikedAnswers(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(answerId);
+                    return newSet;
+                });
+                setAnswers(prev => prev.map(a =>
+                    a.id === answerId ? { ...a, flowerCount: Math.max(0, a.flowerCount - 1) } : a
+                ));
+            } catch (error) {
+                console.error('Error removing like:', error);
+            }
             return;
         }
         try {
@@ -357,8 +373,24 @@ export function QuestionCard({
             showToast('התחבר כדי לתת דיסלייק', 'error');
             return;
         }
-        // Already disliked
+
+        // Toggle: If already disliked, remove dislike
         if (dislikedAnswers.has(answerId)) {
+            try {
+                await updateDoc(doc(db, 'questions', id, 'answers', answerId), {
+                    dislikeCount: increment(-1)
+                });
+                setDislikedAnswers(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(answerId);
+                    return newSet;
+                });
+                setAnswers(prev => prev.map(a =>
+                    a.id === answerId ? { ...a, dislikeCount: Math.max(0, (a.dislikeCount || 0) - 1) } : a
+                ));
+            } catch (error) {
+                console.error('Error removing dislike:', error);
+            }
             return;
         }
         try {
