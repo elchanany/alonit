@@ -5,11 +5,11 @@ import { createContext, useContext, useState, useCallback, ReactNode } from 'rea
 interface Toast {
     id: string;
     message: string;
-    type: 'success' | 'error';
+    type: 'success' | 'error' | 'info';
 }
 
 interface ToastContextType {
-    showToast: (message: string, type?: 'success' | 'error') => void;
+    showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const ToastContext = createContext<ToastContextType>({
@@ -19,7 +19,7 @@ const ToastContext = createContext<ToastContextType>({
 export function ToastProvider({ children }: { children: ReactNode }) {
     const [toasts, setToasts] = useState<Toast[]>([]);
 
-    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
         const id = Date.now().toString() + Math.random();
         setToasts(prev => [...prev, { id, message, type }]);
 
@@ -47,8 +47,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     };
 
     // Toast item styles
-    const getToastStyle = (type: 'success' | 'error'): React.CSSProperties => ({
-        backgroundColor: type === 'success' ? '#22c55e' : '#ef4444',
+    const getToastStyle = (type: 'success' | 'error' | 'info'): React.CSSProperties => ({
+        backgroundColor: type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : '#3b82f6',
         color: 'white',
         padding: '14px 24px',
         borderRadius: '14px',
