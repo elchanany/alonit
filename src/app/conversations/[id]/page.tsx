@@ -512,16 +512,11 @@ export default function ChatPage() {
 
                                             {/* Audio Player */}
                                             {msg.audioUrl && !msg.deleted && (
-                                                <div className="mb-2">
-                                                    <AudioPlayer
-                                                        src={msg.audioUrl}
-                                                        duration={msg.audioDuration}
-                                                        isMine={isMine}
-                                                    />
-                                                    <p className="text-xs opacity-70 mt-1 flex items-center gap-1">
-                                                        🎙️ הקלטה קולית
-                                                    </p>
-                                                </div>
+                                                <AudioPlayer
+                                                    src={msg.audioUrl}
+                                                    duration={msg.audioDuration}
+                                                    isMine={isMine}
+                                                />
                                             )}
 
                                             {msg.content !== '📷 תמונה' && (
