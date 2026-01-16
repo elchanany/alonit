@@ -40,7 +40,7 @@ export function MobileNav() {
         { href: '/', icon: Home, label: 'ראשי' },
         { href: '/conversations', icon: MessageCircle, label: "צ'אט" },
         { href: '/ask', icon: PlusCircle, label: 'שאל', isMain: true },
-        { href: '/notifications', icon: Bell, badge: unreadCount }, // No label!
+        { href: '/notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined }, // Only show badge if > 0
         { href: '/user/me', icon: User, label: 'פרופיל' },
     ] : [
         { href: '/', icon: Home, label: 'ראשי' },
