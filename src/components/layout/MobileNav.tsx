@@ -40,7 +40,7 @@ export function MobileNav() {
         { href: '/', icon: Home, label: 'ראשי' },
         { href: '/conversations', icon: MessageCircle, label: "צ'אט" },
         { href: '/ask', icon: PlusCircle, label: 'שאל', isMain: true },
-        { href: '/notifications', icon: Bell, badge: unreadCount, hideLabel: true }, // Hide label!
+        { href: '/notifications', icon: Bell, badge: unreadCount }, // No label!
         { href: '/user/me', icon: User, label: 'פרופיל' },
     ] : [
         { href: '/', icon: Home, label: 'ראשי' },
@@ -75,7 +75,7 @@ export function MobileNav() {
                                     </div>
                                 )}
                             </div>
-                            {!item.hideLabel && (
+                            {item.label && (
                                 <span className="text-[10px] font-medium">{item.label}</span>
                             )}
                         </>
