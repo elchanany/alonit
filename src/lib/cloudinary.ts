@@ -15,6 +15,12 @@ export async function uploadToCloudinary(
     folder: string = 'chat',
     resourceType: 'image' | 'video' | 'raw' | 'auto' = 'auto'
 ): Promise<{ url: string; publicId: string; duration?: number }> {
+    console.log('☁️ Cloudinary config check:', {
+        cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ? '✅ SET' : '❌ MISSING',
+        api_key: process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY ? '✅ SET' : '❌ MISSING',
+        api_secret: process.env.CLOUDINARY_API_SECRET ? '✅ SET' : '❌ MISSING'
+    });
+
     try {
         const result = await cloudinary.uploader.upload(file, {
             folder,
@@ -29,8 +35,13 @@ export async function uploadToCloudinary(
             publicId: result.public_id,
             duration: result.duration
         };
-    } catch (error) {
-        console.error('Cloudinary upload error:', error);
+    } catch (error: any) {
+        console.error('❌ Cloudinary upload error details:', {
+            message: error.message,
+            http_code: error.http_code,
+            name: error.name,
+            error: error.error
+        });
         throw new Error('Failed to upload file');
     }
 }
