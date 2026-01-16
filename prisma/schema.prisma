@@ -1,0 +1,108 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Models
+model User {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  email         String    @unique
+  passwordHash  String
+  birthDate     DateTime
+  gender        String?   // 'M', 'F', 'O'
+  role          String    @default("USER") // 'USER', 'TRUSTEE', 'ADMIN', 'BOT'
+  trustLevel    String    @default("NEWBIE") // 'NEWBIE', 'MEMBER', etc.
+  
+  // Reliability Metrics
+  reliabilityScore Float   @default(0.5)
+  flowerCount      Int     @default(0)
+  answerCount      Int     @default(0)
+  
+  isVerified     Boolean   @default(false)
+  lastActiveAt   DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  questions      Question[]
+  sentFlowers    Flower[]  @relation("SentFlowers")
+  receivedFlowers Flower[] @relation("ReceivedFlowers")
+  
+  conversationsA Conversation[] @relation("ParticipantA")
+  conversationsB Conversation[] @relation("ParticipantB")
+  messages       Message[]
+  
+  @@index([reliabilityScore(sort: Desc)])
+  @@index([lastActiveAt])
+}
+
+model Question {
+  id                String   @id @default(uuid())
+  authorId          String?
+  author            User?    @relation(fields: [authorId], references: [id])
+  title             String
+  content           String?
+  categoryId        Int
+  
+  isAnonymous       Boolean  @default(false)
+  allowGuestAnswers Boolean  @default(true)
+  
+  viewCount         Int      @default(0)
+  answerCount       Int      @default(0)
+  isLocked          Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  flowers           Flower[]
+}
+
+model Flower {
+  id          String   @id @default(uuid())
+  senderId    String
+  sender      User     @relation("SentFlowers", fields: [senderId], references: [id])
+  recipientId String
+  recipient   User     @relation("ReceivedFlowers", fields: [recipientId], references: [id])
+  questionId  String?
+  question    Question? @relation(fields: [questionId], references: [id])
+  answerId    String?  // Reference to answer ID (conceptually)
+  
+  bloomType   String   // e.g., 'ROSE_RED'
+  createdAt   DateTime @default(now())
+}
+
+model Conversation {
+  id              String    @id @default(uuid())
+  participantAId  String
+  participantA    User      @relation("ParticipantA", fields: [participantAId], references: [id])
+  participantBId  String
+  participantB    User      @relation("ParticipantB", fields: [participantBId], references: [id])
+  
+  encryptionKeyId String?   
+  isActive        Boolean   @default(true)
+  lastMessageAt   DateTime?
+  
+  messages        Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  
+  contentEncrypted String
+  contentDigest    String?
+  
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}

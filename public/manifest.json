@@ -1,0 +1,17 @@
+{
+    "name": "Alonit",
+    "short_name": "Alonit",
+    "description": "הקהילה שלך - שאלות תשובות ופרחים",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#4F46E5",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "/icon.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
