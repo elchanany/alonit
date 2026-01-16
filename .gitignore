@@ -7,3 +7,6 @@ dist/
 .DS_Store
 .vscode/
 
+
+prisma/
+prisma/dev.db

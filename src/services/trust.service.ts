@@ -1,5 +1,12 @@
-import { PrismaClient } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+
+interface UserData {
+    answerCount?: number;
+    flowerCount?: number;
+    lastActiveAt?: Date | { toDate: () => Date };
+    trustLevel?: string;
+}
 
 export class TrustScoreService {
     private static readonly FLOWER_WEIGHT = 1.0;
@@ -15,20 +22,15 @@ export class TrustScoreService {
      * @returns number - Normalized score between 0 and 100
      */
     async calculateScore(userId: string): Promise<number> {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: {
-                answerCount: true,
-                flowerCount: true,
-                lastActiveAt: true,
-                trustLevel: true,
-            }
-        });
+        const userRef = doc(db, "users", userId);
+        const userSnap = await getDoc(userRef);
 
-        if (!user) throw new Error("User not found");
+        if (!userSnap.exists()) throw new Error("User not found");
 
-        const v = user.answerCount; // Total interactions (answers given)
-        const S = v === 0 ? 0 : user.flowerCount / v; // User's average (Flowers / Answers)
+        const user = userSnap.data() as UserData;
+
+        const v = user.answerCount || 0; // Total interactions (answers given)
+        const S = v === 0 ? 0 : (user.flowerCount || 0) / v; // User's average (Flowers / Answers)
         const m = TrustScoreService.BAYESIAN_CONSTANT;
         const C = TrustScoreService.GLOBAL_AVERAGE;
 
@@ -37,7 +39,14 @@ export class TrustScoreService {
 
         // Apply Time Decay D(t)
         // If inactive for > 180 days, score starts to decay
-        const daysInactive = this.calculateDaysInactive(user.lastActiveAt);
+        const lastActive = user.lastActiveAt;
+        const lastActiveDate = lastActive
+            ? (typeof (lastActive as any).toDate === 'function'
+                ? (lastActive as { toDate: () => Date }).toDate()
+                : new Date(lastActive as unknown as string))
+            : new Date();
+
+        const daysInactive = this.calculateDaysInactive(lastActiveDate);
         const decayFactor = this.calculateDecayFactor(daysInactive);
 
         const finalScore = rawScore * decayFactor;
@@ -60,12 +69,10 @@ export class TrustScoreService {
         else if (score >= 50) newLevel = "ACTIVE";
         else if (score >= 20) newLevel = "MEMBER";
 
-        await prisma.user.update({
-            where: { id: userId },
-            data: {
-                reliabilityScore: score / 100.0, // Store as 0-1 float in DB
-                trustLevel: newLevel
-            }
+        const userRef = doc(db, "users", userId);
+        await updateDoc(userRef, {
+            reliabilityScore: score / 100.0, // Store as 0-1 float in DB
+            trustLevel: newLevel
         });
     }
 
@@ -82,3 +89,4 @@ export class TrustScoreService {
         return Math.max(decay, 0.1); // Minimum score multiplier 0.1
     }
 }
+
