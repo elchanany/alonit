@@ -9,6 +9,7 @@ import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, 
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useToast } from '@/context/ToastContext';
+import AudioPlayer from '@/components/chat/AudioPlayer';
 
 interface Message {
     id: string;
@@ -512,22 +513,14 @@ export default function ChatPage() {
                                             {/* Audio Player */}
                                             {msg.audioUrl && !msg.deleted && (
                                                 <div className="mb-2">
-                                                    <div className="flex items-center gap-2 bg-gray-900/30 rounded-lg p-2">
-                                                        <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center flex-shrink-0">
-                                                            <Mic size={16} className="text-white" />
-                                                        </div>
-                                                        <audio
-                                                            controls
-                                                            src={msg.audioUrl}
-                                                            className="flex-1 h-8"
-                                                            style={{ maxWidth: '200px' }}
-                                                        />
-                                                        {msg.audioDuration && (
-                                                            <span className="text-xs text-gray-400">
-                                                                {formatDuration(msg.audioDuration)}
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                                    <AudioPlayer
+                                                        src={msg.audioUrl}
+                                                        duration={msg.audioDuration}
+                                                        isMine={isMine}
+                                                    />
+                                                    <p className="text-xs opacity-70 mt-1 flex items-center gap-1">
+                                                        🎙️ הקלטה קולית
+                                                    </p>
                                                 </div>
                                             )}
 
