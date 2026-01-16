@@ -62,7 +62,9 @@ export function Header() {
                             <Link href="/notifications" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors relative">
                                 <Bell size={20} />
                                 {unreadCount > 0 && (
-                                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-black"></span>
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                        {unreadCount > 9 ? '9+' : unreadCount}
+                                    </span>
                                 )}
                             </Link>
                             <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors" title="הגדרות">
@@ -86,7 +88,9 @@ export function Header() {
                         <Link href="/notifications" className="p-1 relative">
                             <Bell size={20} className="text-gray-400 hover:text-white" />
                             {unreadCount > 0 && (
-                                <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-black"></span>
+                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full min-w-[16px] text-center leading-none">
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                </span>
                             )}
                         </Link>
                     ) : (

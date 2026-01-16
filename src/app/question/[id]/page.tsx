@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, increment, deleteDoc, getDocs, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { MessageCircle, Heart, Share2, Send, ArrowRight, Bell, BellOff } from 'lucide-react';
+import { MessageCircle, Heart, Share2, Send, ArrowRight, Bell, BellOff, ThumbsDown } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
+import { useToast } from '@/context/ToastContext';
 
 interface Answer {
     id: string;
@@ -17,6 +18,7 @@ interface Answer {
     authorName: string;
     authorPhoto?: string;
     flowerCount: number;
+    dislikeCount?: number;
     createdAt: any;
 }
 
@@ -34,11 +36,14 @@ interface Question {
     createdAt: any;
 }
 
+type VoteType = 'like' | 'dislike' | null;
+
 export default function QuestionPage() {
     const params = useParams();
     const router = useRouter();
     const questionId = params.id as string;
     const { user, isVerified } = useAuth();
+    const { showToast } = useToast();
 
     const [question, setQuestion] = useState<Question | null>(null);
     const [answers, setAnswers] = useState<Answer[]>([]);
@@ -46,6 +51,8 @@ export default function QuestionPage() {
     const [answerText, setAnswerText] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [isSubscribed, setIsSubscribed] = useState(false);
+    const [userVotes, setUserVotes] = useState<{ [answerId: string]: VoteType }>({});
+    const [votingInProgress, setVotingInProgress] = useState<{ [answerId: string]: boolean }>({});
 
     // Fetch question
     useEffect(() => {
@@ -82,6 +89,34 @@ export default function QuestionPage() {
         return () => unsubscribe();
     }, [questionId]);
 
+    // Fetch user's votes
+    useEffect(() => {
+        if (!user) return;
+
+        const fetchUserVotes = async () => {
+            const votes: { [answerId: string]: VoteType } = {};
+
+            for (const answer of answers) {
+                const voteQuery = query(
+                    collection(db, 'questions', questionId, 'answers', answer.id, 'votes'),
+                    where('userId', '==', user.uid)
+                );
+                const voteSnap = await getDocs(voteQuery);
+
+                if (!voteSnap.empty) {
+                    const voteData = voteSnap.docs[0].data();
+                    votes[answer.id] = voteData.type as VoteType;
+                }
+            }
+
+            setUserVotes(votes);
+        };
+
+        if (answers.length > 0) {
+            fetchUserVotes();
+        }
+    }, [user, answers, questionId]);
+
     // Submit answer
     const handleSubmitAnswer = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -89,7 +124,7 @@ export default function QuestionPage() {
 
         // Check email verification for email users
         if (user.providerData[0]?.providerId === 'password' && !isVerified) {
-            alert('יש לאמת את המייל לפני שניתן לענות');
+            showToast('יש לאמת את המייל לפני שניתן לענות', 'error');
             return;
         }
 
@@ -102,6 +137,7 @@ export default function QuestionPage() {
                 authorName: user.displayName || 'משתמש',
                 authorPhoto: user.photoURL || null,
                 flowerCount: 0,
+                dislikeCount: 0,
                 createdAt: serverTimestamp()
             });
 
@@ -133,24 +169,70 @@ export default function QuestionPage() {
             });
 
             setAnswerText('');
+            showToast('התשובה נשלחה!', 'success');
         } catch (error) {
             console.error('Error submitting answer:', error);
-            alert('שגיאה בשליחת התשובה');
+            showToast('שגיאה בשליחת התשובה', 'error');
         }
         setSubmitting(false);
     };
 
-    // Give flower to answer
-    const handleGiveFlower = async (answerId: string) => {
-        if (!user) return;
+    // Handle vote (like/dislike with toggle)
+    const handleVote = async (answerId: string, voteType: 'like' | 'dislike') => {
+        if (!user) {
+            showToast('יש להתחבר כדי להצביע', 'info');
+            return;
+        }
+
+        if (votingInProgress[answerId]) return;
+        setVotingInProgress(prev => ({ ...prev, [answerId]: true }));
 
         try {
-            await updateDoc(doc(db, 'questions', questionId, 'answers', answerId), {
-                flowerCount: increment(1)
-            });
+            const currentVote = userVotes[answerId];
+            const voteRef = collection(db, 'questions', questionId, 'answers', answerId, 'votes');
+            const answerRef = doc(db, 'questions', questionId, 'answers', answerId);
+
+            // Find existing vote
+            const existingVoteQuery = query(voteRef, where('userId', '==', user.uid));
+            const existingVoteSnap = await getDocs(existingVoteQuery);
+
+            if (currentVote === voteType) {
+                // Same vote clicked - REMOVE vote (toggle off)
+                if (!existingVoteSnap.empty) {
+                    await deleteDoc(existingVoteSnap.docs[0].ref);
+                    await updateDoc(answerRef, {
+                        [voteType === 'like' ? 'flowerCount' : 'dislikeCount']: increment(-1)
+                    });
+                    setUserVotes(prev => ({ ...prev, [answerId]: null }));
+                }
+            } else if (currentVote) {
+                // Different vote - switch vote
+                if (!existingVoteSnap.empty) {
+                    await updateDoc(existingVoteSnap.docs[0].ref, { type: voteType });
+                }
+                await updateDoc(answerRef, {
+                    [currentVote === 'like' ? 'flowerCount' : 'dislikeCount']: increment(-1),
+                    [voteType === 'like' ? 'flowerCount' : 'dislikeCount']: increment(1)
+                });
+                setUserVotes(prev => ({ ...prev, [answerId]: voteType }));
+            } else {
+                // No existing vote - add new
+                await addDoc(voteRef, {
+                    userId: user.uid,
+                    type: voteType,
+                    createdAt: serverTimestamp()
+                });
+                await updateDoc(answerRef, {
+                    [voteType === 'like' ? 'flowerCount' : 'dislikeCount']: increment(1)
+                });
+                setUserVotes(prev => ({ ...prev, [answerId]: voteType }));
+            }
         } catch (error) {
-            console.error('Error giving flower:', error);
+            console.error('Error voting:', error);
+            showToast('שגיאה בהצבעה', 'error');
         }
+
+        setVotingInProgress(prev => ({ ...prev, [answerId]: false }));
     };
 
     if (loading) {
@@ -231,16 +313,19 @@ export default function QuestionPage() {
                             ? formatDistanceToNow(ans.createdAt.toDate(), { addSuffix: true, locale: he })
                             : 'עכשיו';
 
+                        const userVote = userVotes[ans.id];
+                        const isVoting = votingInProgress[ans.id];
+
                         return (
                             <div key={ans.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
                                 <div className="flex justify-between items-start">
-                                    <div className="flex gap-3">
+                                    <div className="flex gap-3 flex-1">
                                         <Link href={`/user/${ans.authorName}`}>
                                             <div className="w-8 h-8 rounded-full bg-pink-50 flex items-center justify-center text-pink-600 text-sm font-bold">
                                                 {ans.authorName[0]}
                                             </div>
                                         </Link>
-                                        <div>
+                                        <div className="flex-1">
                                             <div className="flex items-center gap-2">
                                                 <span className="font-bold text-gray-800 text-sm">{ans.authorName}</span>
                                                 <span className="text-xs text-gray-400">{answerTime}</span>
@@ -249,13 +334,32 @@ export default function QuestionPage() {
                                         </div>
                                     </div>
 
-                                    <button
-                                        onClick={() => handleGiveFlower(ans.id)}
-                                        className="flex flex-col items-center text-gray-300 hover:text-pink-500 transition-colors p-1"
-                                    >
-                                        <Heart size={20} />
-                                        <span className="text-xs font-medium">{ans.flowerCount || 0}</span>
-                                    </button>
+                                    {/* Vote Buttons */}
+                                    <div className="flex flex-col items-center gap-1 mr-2">
+                                        <button
+                                            onClick={() => handleVote(ans.id, 'like')}
+                                            disabled={isVoting}
+                                            className={`flex flex-col items-center p-2 rounded-lg transition-all ${userVote === 'like'
+                                                    ? 'text-pink-500 bg-pink-50'
+                                                    : 'text-gray-300 hover:text-pink-500 hover:bg-pink-50'
+                                                } ${isVoting ? 'opacity-50' : ''}`}
+                                        >
+                                            <Heart size={20} fill={userVote === 'like' ? 'currentColor' : 'none'} />
+                                            <span className="text-xs font-medium">{ans.flowerCount || 0}</span>
+                                        </button>
+
+                                        <button
+                                            onClick={() => handleVote(ans.id, 'dislike')}
+                                            disabled={isVoting}
+                                            className={`flex flex-col items-center p-2 rounded-lg transition-all ${userVote === 'dislike'
+                                                    ? 'text-red-500 bg-red-50'
+                                                    : 'text-gray-300 hover:text-red-400 hover:bg-red-50'
+                                                } ${isVoting ? 'opacity-50' : ''}`}
+                                        >
+                                            <ThumbsDown size={18} />
+                                            <span className="text-xs font-medium">{ans.dislikeCount || 0}</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -294,3 +398,4 @@ export default function QuestionPage() {
         </div>
     );
 }
+

@@ -44,19 +44,38 @@ export default function UserProfilePage() {
                 // Check if viewing own profile
                 if (username === 'me' && user) {
                     setIsOwnProfile(true);
-                    // Create profile from auth user
-                    setProfile({
-                        id: user.uid,
-                        displayName: user.displayName || 'משתמש',
-                        email: user.email || undefined,
-                        photoURL: user.photoURL || undefined,
-                        bio: '',
-                        flowerCount: 0,
-                        questionCount: 0,
-                        answerCount: 0,
-                        trustLevel: 'NEWBIE',
-                        createdAt: null
-                    });
+
+                    // Try to get user from Firestore first
+                    const userDoc = await getDoc(doc(db, 'users', user.uid));
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        setProfile({
+                            id: user.uid,
+                            displayName: userData.displayName || user.displayName || 'משתמש',
+                            email: user.email || undefined,
+                            photoURL: userData.photoURL || user.photoURL || undefined,
+                            bio: userData.bio || '',
+                            flowerCount: userData.flowerCount || 0,
+                            questionCount: userData.questionCount || 0,
+                            answerCount: userData.answerCount || 0,
+                            trustLevel: userData.trustLevel || 'NEWBIE',
+                            createdAt: userData.createdAt || null
+                        });
+                    } else {
+                        // Create profile from auth user if not in Firestore
+                        setProfile({
+                            id: user.uid,
+                            displayName: user.displayName || 'משתמש',
+                            email: user.email || undefined,
+                            photoURL: user.photoURL || undefined,
+                            bio: '',
+                            flowerCount: 0,
+                            questionCount: 0,
+                            answerCount: 0,
+                            trustLevel: 'NEWBIE',
+                            createdAt: null
+                        });
+                    }
 
                     // Fetch user's questions
                     const qQuery = query(
@@ -68,13 +87,75 @@ export default function UserProfilePage() {
                     const qSnap = await getDocs(qQuery);
                     setQuestions(qSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserQuestion)));
                 } else if (username !== 'me') {
-                    // Search by displayName (public profile)
-                    const usersQuery = query(
+                    const decodedUsername = decodeURIComponent(username);
+
+                    // First try to search by displayName in users collection
+                    let usersQuery = query(
                         collection(db, 'users'),
-                        where('displayName', '==', username),
+                        where('displayName', '==', decodedUsername),
                         limit(1)
                     );
-                    const userSnap = await getDocs(usersQuery);
+                    let userSnap = await getDocs(usersQuery);
+
+                    // If not found by displayName, try by uid (for direct links)
+                    if (userSnap.empty && username.length >= 20) {
+                        const userDoc = await getDoc(doc(db, 'users', username));
+                        if (userDoc.exists()) {
+                            setProfile({ id: userDoc.id, ...userDoc.data() } as UserProfile);
+                            setIsOwnProfile(user?.uid === userDoc.id);
+
+                            // Fetch their questions
+                            const qQuery = query(
+                                collection(db, 'questions'),
+                                where('authorId', '==', userDoc.id),
+                                orderBy('createdAt', 'desc'),
+                                limit(10)
+                            );
+                            const qSnap = await getDocs(qQuery);
+                            setQuestions(qSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserQuestion)));
+                            setLoading(false);
+                            return;
+                        }
+                    }
+
+                    // If still not found, try to find user by their authorName in questions
+                    if (userSnap.empty) {
+                        const questionsQuery = query(
+                            collection(db, 'questions'),
+                            where('authorName', '==', decodedUsername),
+                            limit(1)
+                        );
+                        const questionsSnap = await getDocs(questionsQuery);
+
+                        if (!questionsSnap.empty) {
+                            const questionData = questionsSnap.docs[0].data();
+                            // Create a profile from the question author data
+                            setProfile({
+                                id: questionData.authorId,
+                                displayName: questionData.authorName,
+                                photoURL: questionData.authorPhoto || undefined,
+                                bio: '',
+                                flowerCount: 0,
+                                questionCount: 0,
+                                answerCount: 0,
+                                trustLevel: 'NEWBIE',
+                                createdAt: null
+                            });
+                            setIsOwnProfile(user?.uid === questionData.authorId);
+
+                            // Fetch their questions
+                            const qQuery = query(
+                                collection(db, 'questions'),
+                                where('authorId', '==', questionData.authorId),
+                                orderBy('createdAt', 'desc'),
+                                limit(10)
+                            );
+                            const qSnap = await getDocs(qQuery);
+                            setQuestions(qSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserQuestion)));
+                            setLoading(false);
+                            return;
+                        }
+                    }
 
                     if (!userSnap.empty) {
                         const userData = userSnap.docs[0];
