@@ -91,9 +91,30 @@ export function QuestionCard({
             setShowLikePrompt(true);
             return;
         }
-        if (liked) return;
+
+        // Toggle: If already liked, remove like
+        if (liked) {
+            setLiked(false);
+            setLocalFlowerCount(prev => Math.max(0, prev - 1));
+            try {
+                const docRef = doc(db, 'questions', id);
+                await updateDoc(docRef, { flowerCount: increment(-1) });
+            } catch (error) {
+                console.error("Error removing flower:", error);
+                setLiked(true);
+                setLocalFlowerCount(prev => prev + 1);
+            }
+            return;
+        }
+
+        // If was disliked, remove dislike first
+        if (disliked) {
+            setDisliked(false);
+            setLocalDislikeCount(prev => Math.max(0, prev - 1));
+        }
+
+        // Add like
         setLiked(true);
-        setDisliked(false);
         setLocalFlowerCount(prev => prev + 1);
 
         try {
@@ -111,9 +132,28 @@ export function QuestionCard({
             setShowLikePrompt(true);
             return;
         }
-        if (disliked) return;
+
+        // Toggle: If already disliked, remove dislike
+        if (disliked) {
+            setDisliked(false);
+            setLocalDislikeCount(prev => Math.max(0, prev - 1));
+            return;
+        }
+
+        // If was liked, remove like first
+        if (liked) {
+            setLiked(false);
+            setLocalFlowerCount(prev => Math.max(0, prev - 1));
+            try {
+                const docRef = doc(db, 'questions', id);
+                await updateDoc(docRef, { flowerCount: increment(-1) });
+            } catch (error) {
+                console.error("Error removing flower:", error);
+            }
+        }
+
+        // Add dislike
         setDisliked(true);
-        setLiked(false);
         setLocalDislikeCount(prev => prev + 1);
     };
 
