@@ -656,9 +656,6 @@ export default function ChatPage() {
     // Check if current user blocked the other participant
     const isBlockedByMe = conversation?.blockedBy?.includes(user?.uid || '');
 
-    // Check if current user is blocked by the other participant
-    const amIBlocked = conversation?.blockedBy?.includes(otherParticipantId || '');
-
     // Emoji handler - insert emoji at cursor position
     const handleEmojiSelect = (emoji: string) => {
         if (inputRef.current) {
@@ -745,6 +742,9 @@ export default function ChatPage() {
         : 'משתמש';
 
     const otherParticipantId = conversation?.participants.find(p => p !== user?.uid);
+
+    // Check if current user is blocked by the other participant (must be after otherParticipantId)
+    const amIBlocked = conversation?.blockedBy?.includes(otherParticipantId || '');
 
     return (
         <div className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4 z-0">
