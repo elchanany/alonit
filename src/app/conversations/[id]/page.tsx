@@ -56,13 +56,19 @@ export default function ChatPage() {
     const [uploadingImage, setUploadingImage] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [imageCaption, setImageCaption] = useState('');
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
     // Voice recording state
     const [isRecording, setIsRecording] = useState(false);
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
     const [recordingDuration, setRecordingDuration] = useState(0);
+    const [audioLevel, setAudioLevel] = useState(0);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const animationFrameRef = useRef<number | null>(null);
 
     // Scroll to bottom on new messages
     const scrollToBottom = () => {
@@ -125,6 +131,40 @@ export default function ChatPage() {
         return () => unsubscribe();
     }, [conversationId]);
 
+    // Auto-send audio when recording stops
+    useEffect(() => {
+        if (audioBlob && !sending && user) {
+            // Trigger send automatically
+            const autoSendAudio = async () => {
+                setSending(true);
+                try {
+                    const audioUrl = await uploadAudio(audioBlob);
+                    const messageData: any = {
+                        senderId: user.uid,
+                        senderName: user.displayName || 'משתמש',
+                        content: '🎙️ הקלטה קולית',
+                        audioUrl,
+                        audioDuration: recordingDuration,
+                        createdAt: serverTimestamp()
+                    };
+                    await addDoc(collection(db, 'conversations', conversationId, 'messages'), messageData);
+                    await updateDoc(doc(db, 'conversations', conversationId), {
+                        lastMessage: '🎙️ הקלטה קולית',
+                        lastMessageTime: serverTimestamp()
+                    });
+                    setAudioBlob(null);
+                    setRecordingDuration(0);
+                } catch (error) {
+                    console.error('Error sending audio:', error);
+                    showToast('שגיאה בשליחת ההקלטה', 'error');
+                } finally {
+                    setSending(false);
+                }
+            };
+            autoSendAudio();
+        }
+    }, [audioBlob]);
+
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -178,6 +218,27 @@ export default function ChatPage() {
             const mediaRecorder = new MediaRecorder(stream);
             const audioChunks: Blob[] = [];
 
+            // Set up audio analyzer for visualization
+            const audioContext = new AudioContext();
+            const analyser = audioContext.createAnalyser();
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyser);
+            analyser.fftSize = 256;
+            audioContextRef.current = audioContext;
+            analyserRef.current = analyser;
+
+            // Animate audio level
+            const updateAudioLevel = () => {
+                if (analyserRef.current) {
+                    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+                    analyserRef.current.getByteFrequencyData(dataArray);
+                    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    setAudioLevel(average / 255);
+                }
+                animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+            };
+            updateAudioLevel();
+
             mediaRecorder.ondataavailable = (event) => {
                 audioChunks.push(event.data);
             };
@@ -186,6 +247,14 @@ export default function ChatPage() {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 setAudioBlob(audioBlob);
                 stream.getTracks().forEach(track => track.stop());
+                // Clean up audio analyzer
+                if (animationFrameRef.current) {
+                    cancelAnimationFrame(animationFrameRef.current);
+                }
+                if (audioContextRef.current) {
+                    audioContextRef.current.close();
+                }
+                setAudioLevel(0);
             };
 
             mediaRecorder.start();
@@ -260,15 +329,17 @@ export default function ChatPage() {
         }
 
         // Save message content before clearing
-        const messageText = newMessage.trim();
+        const messageText = newMessage.trim() || imageCaption.trim();
         const fileToUpload = selectedFile;
         const audioToUpload = audioBlob;
         const replyData = replyingTo;
+        const captionText = imageCaption.trim();
 
         // Clear UI immediately for better UX
         setNewMessage('');
         setSelectedFile(null);
         setPreviewImage(null);
+        setImageCaption('');
         setAudioBlob(null);
         setRecordingDuration(0);
         setReplyingTo(null);
@@ -482,6 +553,19 @@ export default function ChatPage() {
                                                     setShowMenu(true);
                                                 }
                                             }}
+                                            onDoubleClick={() => {
+                                                if (!msg.deleted) {
+                                                    setReplyingTo(msg);
+                                                    inputRef.current?.focus();
+                                                }
+                                            }}
+                                            onContextMenu={(e) => {
+                                                e.preventDefault();
+                                                if (!msg.deleted) {
+                                                    setSelectedMessage(msg);
+                                                    setShowMenu(true);
+                                                }
+                                            }}
                                             className={`max-w-[80%] px-4 py-2 relative group cursor-pointer ${msg.deleted
                                                 ? 'bg-gray-700/30 text-gray-500 italic rounded-2xl'
                                                 : isMine
@@ -489,23 +573,23 @@ export default function ChatPage() {
                                                     : 'bg-gray-700/80 text-white rounded-2xl rounded-bl-sm'
                                                 }`}
                                         >
-                                            {/* Reply Preview */}
+                                            {/* Reply Preview - Improved styling */}
                                             {msg.replyToContent && !msg.deleted && (
-                                                <div className={`text-xs mb-1 pb-1 border-b ${isMine ? 'border-indigo-400/50 text-indigo-200' : 'border-gray-600 text-gray-400'}`}>
-                                                    <span className="font-bold">{msg.replyToSender}</span>
-                                                    <p className="opacity-75 truncate">{msg.replyToContent}</p>
+                                                <div className={`text-xs mb-2 p-2 rounded-lg border-r-4 ${isMine ? 'bg-indigo-700/40 border-purple-400 text-indigo-100' : 'bg-gray-600/40 border-cyan-400 text-gray-200'}`}>
+                                                    <span className="font-bold text-purple-300">↩️ {msg.replyToSender}</span>
+                                                    <p className="opacity-90 truncate mt-0.5">{msg.replyToContent}</p>
                                                 </div>
                                             )}
 
-                                            {/* Image */}
+                                            {/* Image - click opens lightbox */}
                                             {msg.imageUrl && !msg.deleted && (
                                                 <img
                                                     src={msg.imageUrl}
                                                     alt="תמונה"
-                                                    className="max-w-full rounded-lg mb-2 cursor-pointer hover:opacity-90"
+                                                    className="max-w-full max-h-64 rounded-lg mb-2 cursor-zoom-in hover:opacity-90 transition-opacity"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        window.open(msg.imageUrl, '_blank');
+                                                        setLightboxImage(msg.imageUrl!);
                                                     }}
                                                 />
                                             )}
@@ -534,72 +618,48 @@ export default function ChatPage() {
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Image Preview - inside card, larger and clearer */}
+                    {/* Image Preview with Caption */}
                     {previewImage && (
-                        <div className="shrink-0 bg-indigo-900/30 border-t border-indigo-500/30 p-4">
+                        <div className="shrink-0 bg-indigo-900/30 border-t border-indigo-500/30 p-3">
                             <div className="flex items-start gap-3">
                                 <div
-                                    className="w-40 h-40 rounded-xl overflow-hidden border-2 border-indigo-500/50 cursor-pointer hover:border-indigo-400 transition-colors"
-                                    onClick={() => window.open(previewImage || '', '_blank')}
+                                    className="w-16 h-16 rounded-lg overflow-hidden border-2 border-indigo-500/50 cursor-zoom-in hover:border-indigo-400 transition-colors flex-shrink-0"
+                                    onClick={() => setLightboxImage(previewImage)}
                                 >
                                     <img
-                                        src={previewImage || ''}
+                                        src={previewImage}
                                         alt="תצוגה מקדימה"
                                         className="w-full h-full object-cover"
                                     />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-white text-sm font-bold mb-1">תמונה מוכנה לשליחה</p>
-                                    <p className="text-gray-400 text-xs truncate mb-2">{selectedFile?.name}</p>
-                                    <p className="text-gray-500 text-xs">
-                                        {selectedFile && `${(selectedFile.size / 1024).toFixed(0)} KB`}
+                                    <input
+                                        type="text"
+                                        value={imageCaption}
+                                        onChange={(e) => setImageCaption(e.target.value)}
+                                        placeholder="הוסף כיתוב לתמונה..."
+                                        className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+                                    />
+                                    <p className="text-gray-500 text-xs mt-1">
+                                        {selectedFile && `${(selectedFile.size / 1024).toFixed(0)} KB • לחץ להגדלה`}
                                     </p>
-                                    <p className="text-indigo-400 text-xs mt-2">לחץ על התמונה להגדלה</p>
                                 </div>
                                 <button
-                                    onClick={() => { setPreviewImage(null); setSelectedFile(null); }}
-                                    className="text-gray-400 hover:text-white p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
+                                    onClick={() => { setPreviewImage(null); setSelectedFile(null); setImageCaption(''); }}
+                                    className="text-gray-400 hover:text-white p-1.5 hover:bg-gray-700/50 rounded-lg transition-colors"
                                 >
-                                    <X size={20} />
+                                    <X size={18} />
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Audio Preview - inside card */}
-                    {audioBlob && (
-                        <div className="shrink-0 bg-purple-900/30 border-t border-purple-500/30 p-4">
+                    {/* Audio Sending Indicator */}
+                    {audioBlob && sending && (
+                        <div className="shrink-0 bg-purple-900/30 border-t border-purple-500/30 p-3">
                             <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-full bg-purple-600 flex items-center justify-center">
-                                    <Mic size={24} className="text-white" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-white text-sm font-bold mb-1">הקלטה קולית מוכנה</p>
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex-1 h-8 bg-gray-700/50 rounded-lg flex items-center px-2">
-                                            {/* Waveform visualization */}
-                                            {[...Array(20)].map((_, i) => (
-                                                <div
-                                                    key={i}
-                                                    className="flex-1 bg-purple-400 mx-0.5 rounded-full"
-                                                    style={{
-                                                        height: `${Math.random() * 60 + 40}%`,
-                                                        opacity: 0.6
-                                                    }}
-                                                />
-                                            ))}
-                                        </div>
-                                        <span className="text-gray-400 text-xs font-mono">
-                                            {formatDuration(recordingDuration)}
-                                        </span>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => { setAudioBlob(null); setRecordingDuration(0); }}
-                                    className="text-gray-400 hover:text-white p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
-                                >
-                                    <X size={20} />
-                                </button>
+                                <Loader2 size={20} className="text-purple-400 animate-spin" />
+                                <span className="text-purple-300 text-sm font-bold">שולח הקלטה...</span>
                             </div>
                         </div>
                     )}
@@ -619,12 +679,30 @@ export default function ChatPage() {
 
                     {/* Message Input - inside card */}
                     <div className="shrink-0 bg-gray-800/80 border-t border-gray-700/50 p-3">
-                        {/* Recording indicator */}
+                        {/* Recording indicator with live audio visualization */}
                         {isRecording && (
-                            <div className="flex items-center gap-2 mb-2 px-2 py-1 bg-red-900/30 rounded-lg">
-                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                                <span className="text-red-400 text-sm font-bold">מקליט...</span>
-                                <span className="text-gray-400 text-sm font-mono ml-auto">
+                            <div className="flex items-center gap-3 mb-2 px-3 py-2 bg-red-900/30 rounded-xl">
+                                <div
+                                    className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center transition-transform duration-75"
+                                    style={{ transform: `scale(${1 + audioLevel * 0.5})` }}
+                                >
+                                    <Mic size={18} className="text-white" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-1 h-6">
+                                        {[...Array(16)].map((_, i) => (
+                                            <div
+                                                key={i}
+                                                className="flex-1 bg-red-400 rounded-full transition-all duration-75"
+                                                style={{
+                                                    height: `${Math.min(100, (audioLevel * 100) + Math.random() * 30)}%`,
+                                                    opacity: audioLevel > 0.1 ? 0.7 + Math.random() * 0.3 : 0.3
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                                <span className="text-red-400 text-sm font-mono font-bold">
                                     {formatDuration(recordingDuration)}
                                 </span>
                             </div>
@@ -647,17 +725,21 @@ export default function ChatPage() {
                                 <ImageIcon size={20} />
                             </button>
 
-                            {/* Mic button */}
+                            {/* Mic button - Press to talk */}
                             <button
                                 type="button"
-                                onClick={isRecording ? stopRecording : startRecording}
-                                className={`w-10 h-10 flex items-center justify-center transition-colors ${isRecording
-                                    ? 'text-red-400 bg-red-900/30 hover:bg-red-900/50'
-                                    : 'text-gray-400 hover:text-purple-400'
+                                onMouseDown={(e) => { e.preventDefault(); if (!isRecording) startRecording(); }}
+                                onMouseUp={() => { if (isRecording) stopRecording(); }}
+                                onMouseLeave={() => { if (isRecording) stopRecording(); }}
+                                onTouchStart={(e) => { e.preventDefault(); if (!isRecording) startRecording(); }}
+                                onTouchEnd={() => { if (isRecording) stopRecording(); }}
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording
+                                    ? 'text-white bg-red-500 scale-110 shadow-lg shadow-red-500/50'
+                                    : 'text-gray-400 hover:text-purple-400 hover:bg-purple-500/20'
                                     }`}
-                                title={isRecording ? 'עצור הקלטה' : 'הקלטה קולית'}
+                                title="לחץ והחזק להקלטה"
                             >
-                                {isRecording ? <Square size={20} className="fill-current" /> : <Mic size={20} />}
+                                <Mic size={20} className={isRecording ? 'animate-pulse' : ''} />
                             </button>
                             <input
                                 type="text"
@@ -699,6 +781,27 @@ export default function ChatPage() {
                             מחק
                         </button>
                     </div>
+                </div>
+            )}
+
+            {/* Lightbox Modal for Images */}
+            {lightboxImage && (
+                <div
+                    className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    onClick={() => setLightboxImage(null)}
+                >
+                    <button
+                        onClick={() => setLightboxImage(null)}
+                        className="absolute top-4 right-4 w-10 h-10 bg-gray-800/80 hover:bg-gray-700 rounded-full flex items-center justify-center text-white transition-colors z-10"
+                    >
+                        <X size={24} />
+                    </button>
+                    <img
+                        src={lightboxImage}
+                        alt="תמונה מוגדלת"
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    />
                 </div>
             )}
         </div>
