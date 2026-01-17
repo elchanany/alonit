@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import EmojiPicker, { Theme, EmojiStyle, Categories, SuggestionMode } from 'emoji-picker-react';
-import { Smile, Image, X } from 'lucide-react';
+import { Smile, Image, X, Search, Clapperboard, Loader2 } from 'lucide-react';
+import { giphyService, GiphyItem } from '@/services/giphyService';
 
 interface EmojiStickerPickerProps {
     onEmojiSelect: (emoji: string) => void;
@@ -11,77 +12,83 @@ interface EmojiStickerPickerProps {
     onClose: () => void;
 }
 
-// Placeholder stickers - will be replaced with user stickers from Firebase later
-const defaultStickers = [
-    { id: '1', url: 'https://em-content.zobj.net/thumbs/120/apple/354/thumbs-up_1f44d.png', name: 'לייק' },
-    { id: '2', url: 'https://em-content.zobj.net/thumbs/120/apple/354/red-heart_2764-fe0f.png', name: 'לב' },
-    { id: '3', url: 'https://em-content.zobj.net/thumbs/120/apple/354/fire_1f525.png', name: 'אש' },
-    { id: '4', url: 'https://em-content.zobj.net/thumbs/120/apple/354/face-with-tears-of-joy_1f602.png', name: 'צוחק' },
-    { id: '5', url: 'https://em-content.zobj.net/thumbs/120/apple/354/clapping-hands_1f44f.png', name: 'מחיאות כפיים' },
-    { id: '6', url: 'https://em-content.zobj.net/thumbs/120/apple/354/party-popper_1f389.png', name: 'מסיבה' },
-];
-
 export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onClose }: EmojiStickerPickerProps) {
-    const [activeTab, setActiveTab] = useState<'emoji' | 'sticker'>('emoji');
-    const [stickers, setStickers] = useState(defaultStickers);
-    const pickerRef = useRef<HTMLDivElement>(null);
+    const [activeTab, setActiveTab] = useState<'emoji' | 'stickers' | 'gifs'>('emoji');
+    const [items, setItems] = useState<GiphyItem[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [error, setError] = useState<string | null>(null);
 
-    // Close when clicking outside
+    // Default trending on load
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
-                onClose();
-            }
+        if (activeTab === 'emoji') return;
+
+        const fetchData = async () => {
+            setIsLoading(true);
+            setError(null);
+
+            // Debounce search
+            const delayDebounceFn = setTimeout(async () => {
+                const results = await giphyService.search(searchQuery, activeTab, 24);
+                if (results.length === 0 && !process.env.NEXT_PUBLIC_GIPHY_API_KEY) {
+                    setError('נדרש מפתח Giphy API (חינם) כדי להציג תוכן זה.');
+                } else if (results.length === 0) {
+                    // Empty results but has key
+                }
+                setItems(results);
+                setIsLoading(false);
+            }, searchQuery ? 500 : 0);
+
+            return () => clearTimeout(delayDebounceFn);
         };
 
-        if (isOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isOpen, onClose]);
+        fetchData();
+    }, [activeTab, searchQuery]);
 
     if (!isOpen) return null;
 
-    const handleEmojiClick = (emojiData: { emoji: string }) => {
-        onEmojiSelect(emojiData.emoji);
-    };
-
-    const handleStickerClick = (stickerUrl: string) => {
+    const handleStickerClick = (url: string) => {
         if (onStickerSelect) {
-            onStickerSelect(stickerUrl);
+            onStickerSelect(url);
         }
     };
 
-    // Inline style for keyboard layout
     return (
         <div
             className="w-full bg-gray-900 border-t border-gray-800 flex flex-col animate-in slide-in-from-bottom-10 duration-200"
-            style={{ height: '320px' }}
+            style={{ height: '350px' }}
         >
             {/* Tabs */}
             <div className="flex border-b border-gray-800">
                 <button
                     onClick={() => setActiveTab('emoji')}
-                    className={`flex-1 py-3 px-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'emoji'
-                            ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-900/10'
-                            : 'text-gray-500 hover:text-gray-300'
+                    className={`flex-1 py-3 px-2 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'emoji'
+                        ? 'text-indigo-400 border-b-2 border-indigo-400 bg-indigo-900/10'
+                        : 'text-gray-500 hover:text-gray-300'
                         }`}
                 >
                     <Smile size={18} />
                     אימוג'ים
                 </button>
                 <button
-                    onClick={() => setActiveTab('sticker')}
-                    className={`flex-1 py-3 px-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'sticker'
-                            ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-900/10'
-                            : 'text-gray-500 hover:text-gray-300'
+                    onClick={() => setActiveTab('stickers')}
+                    className={`flex-1 py-3 px-2 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'stickers'
+                        ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-900/10'
+                        : 'text-gray-500 hover:text-gray-300'
                         }`}
                 >
                     <Image size={18} />
                     סטיקרים
+                </button>
+                <button
+                    onClick={() => setActiveTab('gifs')}
+                    className={`flex-1 py-3 px-2 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'gifs'
+                        ? 'text-pink-400 border-b-2 border-pink-400 bg-pink-900/10'
+                        : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                >
+                    <Clapperboard size={18} />
+                    GIFs
                 </button>
                 <div className="flex items-center px-2">
                     <button
@@ -94,10 +101,10 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden flex flex-col">
                 {activeTab === 'emoji' ? (
                     <EmojiPicker
-                        onEmojiClick={handleEmojiClick}
+                        onEmojiClick={(data) => onEmojiSelect(data.emoji)}
                         theme={Theme.DARK}
                         emojiStyle={EmojiStyle.APPLE}
                         width="100%"
@@ -109,45 +116,72 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
                         previewConfig={{ showPreview: false }}
                         categories={[
                             { category: Categories.SUGGESTED, name: 'שימוש תכוף' },
-                            { category: Categories.SMILEYS_PEOPLE, name: 'פרצופים ואנשים' },
-                            { category: Categories.ANIMALS_NATURE, name: 'חיות וטבע' },
-                            { category: Categories.FOOD_DRINK, name: 'אוכל ושתייה' },
-                            { category: Categories.TRAVEL_PLACES, name: 'נסיעות ומקומות' },
+                            { category: Categories.SMILEYS_PEOPLE, name: 'פרצופים' },
+                            { category: Categories.ANIMALS_NATURE, name: 'חיות' },
+                            { category: Categories.FOOD_DRINK, name: 'אוכל' },
                             { category: Categories.ACTIVITIES, name: 'פעילויות' },
-                            { category: Categories.OBJECTS, name: 'אובייקטים' },
+                            { category: Categories.TRAVEL_PLACES, name: 'נסיעות' },
+                            { category: Categories.OBJECTS, name: 'חפצים' },
                             { category: Categories.SYMBOLS, name: 'סמלים' },
                             { category: Categories.FLAGS, name: 'דגלים' },
                         ]}
                     />
                 ) : (
-                    <div className="p-4 h-full overflow-y-auto">
-                        {/* Stickers Grid */}
-                        <div className="grid grid-cols-4 gap-3">
-                            {stickers.map((sticker) => (
-                                <button
-                                    key={sticker.id}
-                                    onClick={() => handleStickerClick(sticker.url)}
-                                    className="w-full aspect-square rounded-xl bg-gray-800/50 hover:bg-gray-700 p-2 transition-all hover:scale-105 active:scale-95"
-                                    title={sticker.name}
-                                >
-                                    <img
-                                        src={sticker.url}
-                                        alt={sticker.name}
-                                        className="w-full h-full object-contain"
-                                    />
-                                </button>
-                            ))}
+                    <div className="flex flex-col h-full">
+                        {/* Search Bar */}
+                        <div className="p-2 border-b border-gray-800">
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder={activeTab === 'stickers' ? 'חפש סטיקרים...' : 'חפש GIFs...'}
+                                    className="w-full bg-gray-800 text-white text-sm rounded-full py-2 pl-4 pr-10 focus:outline-none focus:ring-1 focus:ring-indigo-500 border border-gray-700 placeholder-gray-500"
+                                />
+                                <Search size={16} className="absolute right-3 top-2.5 text-gray-400" />
+                            </div>
                         </div>
 
-                        {/* Add Sticker Button - Future */}
-                        <div className="mt-6 pt-6 border-t border-gray-800 text-center">
-                            <p className="text-xs text-gray-500 mb-3">סטיקרים נוספים בקרוב</p>
-                            <button
-                                disabled
-                                className="inline-flex items-center gap-2 py-2 px-4 bg-gray-800 text-gray-400 rounded-full text-xs font-bold cursor-not-allowed border border-gray-700"
-                            >
-                                + חבילות סטיקרים
-                            </button>
+                        {/* Grid Results */}
+                        <div className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-700">
+                            {isLoading ? (
+                                <div className="flex items-center justify-center h-40">
+                                    <Loader2 size={32} className="animate-spin text-gray-500" />
+                                </div>
+                            ) : error ? (
+                                <div className="text-center p-8">
+                                    <p className="text-red-400 text-sm mb-2 font-bold">חסר מפתח API</p>
+                                    <p className="text-gray-500 text-xs">{error}</p>
+                                    <p className="text-gray-600 text-[10px] mt-4">
+                                        (פתח חשבון מפתחים ב-Giphy והוסף את המפתח ל-NV)
+                                    </p>
+                                </div>
+                            ) : items.length === 0 ? (
+                                <div className="text-center p-8 text-gray-500 text-sm">
+                                    לא נמצאו תוצאות 🤷‍♂️
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-4 gap-2">
+                                    {items.map((item) => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => handleStickerClick(item.images.fixed_height.url)}
+                                            className="w-full aspect-square rounded-lg bg-gray-800/30 overflow-hidden relative group"
+                                        >
+                                            <img
+                                                src={item.images.fixed_height.url}
+                                                alt={item.title}
+                                                className="w-full h-full object-contain hover:scale-110 transition-transform duration-200"
+                                                loading="lazy"
+                                            />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="mt-4 text-center">
+                                <span className="text-[10px] text-gray-600 font-mono">Powered by GIPHY</span>
+                            </div>
                         </div>
                     </div>
                 )}
