@@ -43,6 +43,7 @@ export default function ChatPage() {
     const { showToast } = useToast();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -53,6 +54,7 @@ export default function ChatPage() {
     const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
     const [showMenu, setShowMenu] = useState(false);
+    const [showMediaOptions, setShowMediaOptions] = useState(false); // Toggle for camera/gallery menu
     const [isMuted, setIsMuted] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -858,6 +860,15 @@ export default function ChatPage() {
                                 accept="image/*"
                                 className="hidden"
                             />
+                            {/* Camera Input */}
+                            <input
+                                type="file"
+                                ref={cameraInputRef}
+                                onChange={handleImageSelect}
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                            />
 
                             {/* Emoji button */}
                             <button
@@ -872,22 +883,64 @@ export default function ChatPage() {
                                 <Smile size={18} />
                             </button>
 
-                            {/* Image button */}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (!hasAcceptedDisclaimer()) {
-                                        setPendingUploadAction(() => () => fileInputRef.current?.click());
-                                        setShowUploadDisclaimer(true);
-                                    } else {
-                                        fileInputRef.current?.click();
-                                    }
-                                }}
-                                className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-indigo-400 transition-colors active:scale-95 rounded-full hover:bg-indigo-500/10"
-                                disabled={isRecording}
-                            >
-                                <ImageIcon size={18} />
-                            </button>
+                            {/* Image button & Popup Menu */}
+                            <div className="relative">
+                                {showMediaOptions && (
+                                    <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-700 rounded-xl shadow-xl overflow-hidden min-w-[140px] flex flex-col z-20 animate-in slide-in-from-bottom-2 duration-150">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowMediaOptions(false);
+                                                if (!hasAcceptedDisclaimer()) {
+                                                    setPendingUploadAction(() => () => cameraInputRef.current?.click());
+                                                    setShowUploadDisclaimer(true);
+                                                } else {
+                                                    cameraInputRef.current?.click();
+                                                }
+                                            }}
+                                            className="px-4 py-3 flex items-center gap-3 hover:bg-gray-700/50 transition-colors text-right"
+                                        >
+                                            <span className="text-xl">📸</span>
+                                            <span className="text-sm font-medium text-gray-200">מצלמה</span>
+                                        </button>
+                                        <div className="h-px bg-gray-700/50" />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowMediaOptions(false);
+                                                if (!hasAcceptedDisclaimer()) {
+                                                    setPendingUploadAction(() => () => fileInputRef.current?.click());
+                                                    setShowUploadDisclaimer(true);
+                                                } else {
+                                                    fileInputRef.current?.click();
+                                                }
+                                            }}
+                                            className="px-4 py-3 flex items-center gap-3 hover:bg-gray-700/50 transition-colors text-right"
+                                        >
+                                            <span className="text-xl">🖼️</span>
+                                            <span className="text-sm font-medium text-gray-200">גלריה</span>
+                                        </button>
+                                    </div>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowMediaOptions(!showMediaOptions)}
+                                    className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full ${showMediaOptions
+                                        ? 'text-indigo-400 bg-indigo-500/20'
+                                        : 'text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10'
+                                        }`}
+                                    disabled={isRecording}
+                                >
+                                    <ImageIcon size={18} />
+                                </button>
+                                {/* Overlay to close menu when clicking outside */}
+                                {showMediaOptions && (
+                                    <div
+                                        className="fixed inset-0 z-10 bg-transparent"
+                                        onClick={() => setShowMediaOptions(false)}
+                                    />
+                                )}
+                            </div>
 
                             {/* Mic button */}
                             <button
