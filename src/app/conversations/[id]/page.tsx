@@ -70,6 +70,12 @@ export default function ChatPage() {
     const analyserRef = useRef<AnalyserNode | null>(null);
     const animationFrameRef = useRef<number | null>(null);
 
+    // Upload disclaimer and error state
+    const [showUploadDisclaimer, setShowUploadDisclaimer] = useState(false);
+    const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null);
+    const [showServiceError, setShowServiceError] = useState(false);
+    const [serviceErrorDetails, setServiceErrorDetails] = useState('');
+
     // Scroll to bottom on new messages
     const scrollToBottom = () => {
         // Only scroll inside the messages container, not the whole page
@@ -173,6 +179,46 @@ export default function ChatPage() {
         }
     }, [audioBlob]);
 
+    // Check if user has accepted upload disclaimer
+    const hasAcceptedDisclaimer = () => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('uploadDisclaimerAccepted') === 'true';
+        }
+        return false;
+    };
+
+    const acceptDisclaimer = () => {
+        localStorage.setItem('uploadDisclaimerAccepted', 'true');
+        setShowUploadDisclaimer(false);
+        if (pendingUploadAction) {
+            pendingUploadAction();
+            setPendingUploadAction(null);
+        }
+    };
+
+    // Handle service errors and allow reporting
+    const handleServiceError = (error: string) => {
+        setServiceErrorDetails(error);
+        setShowServiceError(true);
+    };
+
+    const reportServiceIssue = async () => {
+        try {
+            await addDoc(collection(db, 'reports'), {
+                type: 'SERVICE_ERROR',
+                service: 'Catbox (file hosting)',
+                error: serviceErrorDetails,
+                reporterId: user?.uid,
+                reporterName: user?.displayName,
+                createdAt: serverTimestamp()
+            });
+            showToast('הדיווח נשלח, תודה!', 'success');
+            setShowServiceError(false);
+        } catch (e) {
+            showToast('שגיאה בשליחת הדיווח', 'error');
+        }
+    };
+
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -208,19 +254,32 @@ export default function ChatPage() {
 
             if (!data.success) {
                 console.error('❌ Upload failed:', data.error);
+                if (data.serviceError) {
+                    handleServiceError(data.error || 'שגיאה בשירות האחסון');
+                }
                 throw new Error(data.error || 'Upload failed');
             }
 
             console.log('✅ Image uploaded successfully:', data.url);
             return data.url;
-        } catch (error) {
+        } catch (error: any) {
             console.error('💥 Upload error:', error);
+            if (!showServiceError) {
+                handleServiceError(error.message || 'שגיאה לא ידועה');
+            }
             throw error;
         }
     };
 
     // Voice recording functions
     const startRecording = async () => {
+        // Check disclaimer first
+        if (!hasAcceptedDisclaimer()) {
+            setPendingUploadAction(() => startRecording);
+            setShowUploadDisclaimer(true);
+            return;
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
@@ -726,7 +785,14 @@ export default function ChatPage() {
                             />
                             <button
                                 type="button"
-                                onClick={() => fileInputRef.current?.click()}
+                                onClick={() => {
+                                    if (!hasAcceptedDisclaimer()) {
+                                        setPendingUploadAction(() => () => fileInputRef.current?.click());
+                                        setShowUploadDisclaimer(true);
+                                    } else {
+                                        fileInputRef.current?.click();
+                                    }
+                                }}
                                 className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-indigo-400 transition-colors"
                                 disabled={isRecording}
                             >
@@ -815,6 +881,80 @@ export default function ChatPage() {
                         className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                         onClick={(e) => e.stopPropagation()}
                     />
+                </div>
+            )}
+
+            {/* Upload Disclaimer Modal */}
+            {showUploadDisclaimer && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 max-w-md w-full">
+                        <div className="text-center mb-4">
+                            <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span className="text-3xl">⚠️</span>
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">שימו לב לפני העלאת קבצים</h3>
+                        </div>
+                        <div className="text-gray-300 text-sm space-y-3 mb-6">
+                            <p>🔹 האתר משתמש בשירות אחסון חינמי חיצוני</p>
+                            <p>🔹 <strong>אין לנו אחריות</strong> על התוכן שמועלה</p>
+                            <p>🔹 קבצים עלולים <strong>להימחק או להיעלם</strong> ללא התראה</p>
+                            <p>🔹 השירות עשוי להיות לא זמין לעיתים</p>
+                            <p className="text-xs text-gray-500 pt-2 border-t border-gray-700">
+                                אנו עושים כמיטב יכולתנו לספק שירות טוב, אך מכיוון שזה שירות חינמי - אין ערבות ליציבות מלאה.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowUploadDisclaimer(false)}
+                                className="flex-1 px-4 py-2 border border-gray-600 text-gray-300 rounded-xl hover:bg-gray-700 transition-colors"
+                            >
+                                ביטול
+                            </button>
+                            <button
+                                onClick={acceptDisclaimer}
+                                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
+                            >
+                                הבנתי, המשך
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Service Error Modal with Report Button */}
+            {showServiceError && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-gray-800 rounded-2xl border border-red-500/50 p-6 max-w-md w-full">
+                        <div className="text-center mb-4">
+                            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span className="text-3xl">❌</span>
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">שגיאה בהעלאת הקובץ</h3>
+                        </div>
+                        <div className="text-gray-300 text-sm space-y-3 mb-6">
+                            <p>נראה שיש בעיה עם שירות האחסון החיצוני.</p>
+                            <p className="text-red-400 bg-red-900/20 p-2 rounded-lg text-xs font-mono">
+                                {serviceErrorDetails}
+                            </p>
+                            <p className="text-gray-400 text-xs">
+                                אם הבעיה חוזרת, אנא דווח לנו כדי שנוכל לבדוק.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowServiceError(false)}
+                                className="flex-1 px-4 py-2 border border-gray-600 text-gray-300 rounded-xl hover:bg-gray-700 transition-colors"
+                            >
+                                סגור
+                            </button>
+                            <button
+                                onClick={reportServiceIssue}
+                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
+                            >
+                                דווח על הבעיה
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

@@ -1,53 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadToCloudinary } from '@/lib/cloudinary';
 
 export async function POST(request: NextRequest) {
-    console.log('🚀 API /upload called');
     try {
         const formData = await request.formData();
         const file = formData.get('file') as File;
-        const type = formData.get('type') as string; // 'image' or 'audio'
-
-        console.log('📁 File received:', file?.name, file?.size, 'Type:', type);
+        const type = formData.get('type') as string || 'image';
 
         if (!file) {
-            console.error('❌ No file in request');
-            return NextResponse.json(
-                { error: 'No file provided' },
-                { status: 400 }
-            );
+            return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
         }
 
-        // Convert file to buffer
-        console.log('🔄 Converting to buffer...');
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
+        // Check file size (Catbox limit is 200MB)
+        if (file.size > 200 * 1024 * 1024) {
+            return NextResponse.json({ success: false, error: 'File too large (max 200MB)' }, { status: 400 });
+        }
 
-        // Convert buffer to base64 data URI
-        const base64 = buffer.toString('base64');
-        const dataURI = `data:${file.type};base64,${base64}`;
-        console.log('📦 Data URI created, length:', dataURI.length);
+        // Create FormData for Catbox API
+        const catboxFormData = new FormData();
+        catboxFormData.append('reqtype', 'fileupload');
+        catboxFormData.append('fileToUpload', file);
 
-        // Upload to Cloudinary
-        console.log('☁️ Uploading to Cloudinary...');
-        const result = await uploadToCloudinary(
-            dataURI,
-            'chat',
-            type === 'audio' ? 'video' : 'image' // Cloudinary treats audio as video
-        );
+        // Upload to Catbox
+        const response = await fetch('https://catbox.moe/user/api.php', {
+            method: 'POST',
+            body: catboxFormData,
+        });
 
-        console.log('✅ Upload successful!', result.url);
+        if (!response.ok) {
+            console.error('Catbox upload failed:', response.status, response.statusText);
+            return NextResponse.json({
+                success: false,
+                error: 'Upload failed - service may be temporarily unavailable',
+                serviceError: true
+            }, { status: 500 });
+        }
+
+        const url = await response.text();
+
+        // Check if we got a valid URL back
+        if (!url.startsWith('https://')) {
+            console.error('Catbox returned invalid response:', url);
+            return NextResponse.json({
+                success: false,
+                error: url || 'Upload failed',
+                serviceError: true
+            }, { status: 500 });
+        }
+
         return NextResponse.json({
             success: true,
-            url: result.url,
-            publicId: result.publicId,
-            duration: result.duration
+            url: url.trim(),
+            type
         });
-    } catch (error: any) {
-        console.error('💥 API Upload error:', error);
-        return NextResponse.json(
-            { error: error.message || 'Upload failed' },
-            { status: 500 }
-        );
+
+    } catch (error) {
+        console.error('Upload error:', error);
+        return NextResponse.json({
+            success: false,
+            error: 'Failed to upload file',
+            serviceError: true
+        }, { status: 500 });
     }
 }
