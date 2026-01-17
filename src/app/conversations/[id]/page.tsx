@@ -543,16 +543,40 @@ export default function ChatPage() {
         }
     };
 
+    // Show skeleton while loading auth or data
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
+                <div className="max-w-2xl mx-auto h-screen bg-gray-800/40 flex flex-col">
+                    {/* Header skeleton */}
+                    <div className="p-4 border-b border-gray-700/50 flex items-center gap-3">
+                        <div className="w-8 h-8 bg-gray-700 rounded-lg animate-pulse" />
+                        <div className="w-10 h-10 bg-gray-700 rounded-full animate-pulse" />
+                        <div className="h-5 bg-gray-700 rounded w-24 animate-pulse" />
+                    </div>
+                    {/* Messages skeleton */}
+                    <div className="flex-1 p-4 space-y-4">
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                                <div className={`w-48 h-10 bg-gray-700 rounded-2xl animate-pulse`} />
+                            </div>
+                        ))}
+                    </div>
+                    {/* Input skeleton */}
+                    <div className="p-3 border-t border-gray-700/50">
+                        <div className="h-10 bg-gray-700 rounded-full animate-pulse" />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (!user) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-black">
                 <p className="text-gray-400">יש להתחבר כדי לצפות בצ'אט</p>
             </div>
         );
-    }
-
-    if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-black text-white">טוען...</div>;
     }
 
     const otherParticipantName = conversation
@@ -889,18 +913,19 @@ export default function ChatPage() {
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 max-w-md w-full">
                         <div className="text-center mb-4">
-                            <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <span className="text-3xl">⚠️</span>
+                            <div className="w-16 h-16 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span className="text-3xl">📤</span>
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-2">שימו לב לפני העלאת קבצים</h3>
+                            <h3 className="text-xl font-bold text-white mb-2">לפני שמעלים קובץ</h3>
                         </div>
                         <div className="text-gray-300 text-sm space-y-3 mb-6">
-                            <p>🔹 האתר משתמש בשירות אחסון חינמי חיצוני</p>
-                            <p>🔹 <strong>אין לנו אחריות</strong> על התוכן שמועלה</p>
-                            <p>🔹 קבצים עלולים <strong>להימחק או להיעלם</strong> ללא התראה</p>
-                            <p>🔹 השירות עשוי להיות לא זמין לעיתים</p>
-                            <p className="text-xs text-gray-500 pt-2 border-t border-gray-700">
-                                אנו עושים כמיטב יכולתנו לספק שירות טוב, אך מכיוון שזה שירות חינמי - אין ערבות ליציבות מלאה.
+                            <p>✅ הקבצים שלך נשמרים ומוצגים רק בשיחה הזו</p>
+                            <p>✅ רק מי שמשתתף בשיחה יכול לראות אותם</p>
+                            <p className="text-gray-400 text-xs pt-2 border-t border-gray-700">
+                                💡 <strong>טיפ:</strong> מומלץ לא לשתף מידע רגיש במיוחד (כמו סיסמאות או מסמכים אישיים) - כמו בכל שירות הודעות.
+                            </p>
+                            <p className="text-gray-500 text-xs">
+                                השירות חינמי ולכן ייתכנו תקלות זמניות. התמונות וההקלטות עשויות להימחק לאחר זמן מה.
                             </p>
                         </div>
                         <div className="flex gap-3">

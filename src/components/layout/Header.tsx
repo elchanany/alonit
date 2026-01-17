@@ -8,7 +8,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export function Header() {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [unreadCount, setUnreadCount] = useState(0);
 
     // Listen for unread notifications
@@ -35,7 +35,7 @@ export function Header() {
         <header className="sticky top-0 z-40 w-full border-b border-indigo-500/30 bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 shadow-lg">
             <div className="container flex h-14 md:h-16 items-center justify-between px-4 md:px-6 mx-auto max-w-6xl">
                 {/* Logo */}
-                <Link href="/" className="flex items-center gap-2 font-bold text-xl text-white hover:opacity-80 transition-opacity">
+                <Link href="/" className="flex items-center gap-2 font-bold text-xl text-white hover:opacity-80 transition-opacity active:scale-95">
                     🌺 <span className="hidden md:inline">אלונית</span>
                 </Link>
 
@@ -53,17 +53,24 @@ export function Header() {
 
                 {/* Desktop Nav */}
                 <nav className="hidden md:flex items-center gap-2">
-                    <Link href="/ask" className="text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10">
+                    <Link href="/ask" className="text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10 active:scale-95">
                         שאל שאלה
                     </Link>
 
-                    {user ? (
+                    {authLoading ? (
+                        /* Skeleton during auth loading */
+                        <div className="flex items-center gap-2">
+                            <div className="w-16 h-8 bg-gray-700/50 rounded-full animate-pulse" />
+                            <div className="w-8 h-8 bg-gray-700/50 rounded-full animate-pulse" />
+                            <div className="w-8 h-8 bg-gray-700/50 rounded-full animate-pulse" />
+                        </div>
+                    ) : user ? (
                         <>
-                            <Link href="/conversations" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10">
+                            <Link href="/conversations" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10 active:scale-95">
                                 <MessageCircle size={18} />
                                 צ'אטים
                             </Link>
-                            <Link href="/notifications" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors relative">
+                            <Link href="/notifications" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors relative active:scale-95">
                                 <Bell size={20} />
                                 {unreadCount > 0 && (
                                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
@@ -71,15 +78,15 @@ export function Header() {
                                     </span>
                                 )}
                             </Link>
-                            <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors" title="הגדרות">
+                            <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95" title="הגדרות">
                                 <Settings size={20} />
                             </Link>
-                            <Link href="/user/me" className="ml-2 p-1 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-full border border-gray-700 hover:border-indigo-400 transition-colors">
+                            <Link href="/user/me" className="ml-2 p-1 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-full border border-gray-700 hover:border-indigo-400 transition-colors active:scale-95">
                                 <User size={20} className="text-white" />
                             </Link>
                         </>
                     ) : (
-                        <Link href="/login" className="flex items-center gap-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full transition-colors">
+                        <Link href="/login" className="flex items-center gap-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full transition-colors active:scale-95">
                             <LogIn size={16} />
                             התחברות
                         </Link>
@@ -88,12 +95,14 @@ export function Header() {
 
                 {/* Mobile Icons (only on mobile) */}
                 <div className="flex md:hidden items-center gap-2">
-                    {user ? (
-                        <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                    {authLoading ? (
+                        <div className="w-8 h-8 bg-gray-700/50 rounded-full animate-pulse" />
+                    ) : user ? (
+                        <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95">
                             <Settings size={20} />
                         </Link>
                     ) : (
-                        <Link href="/login" className="text-sm font-medium text-white">
+                        <Link href="/login" className="text-sm font-medium text-white active:scale-95">
                             <LogIn size={20} />
                         </Link>
                     )}

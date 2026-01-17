@@ -32,20 +32,31 @@ export default function ConversationsPage() {
             return;
         }
 
+        console.log('📥 Loading conversations for user:', user.uid);
+
         const convQuery = query(
             collection(db, 'conversations'),
             where('participants', 'array-contains', user.uid),
             orderBy('lastMessageTime', 'desc')
         );
 
-        const unsubscribe = onSnapshot(convQuery, (snapshot) => {
-            const convs = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Conversation[];
-            setConversations(convs);
-            setLoading(false);
-        });
+        const unsubscribe = onSnapshot(convQuery,
+            (snapshot) => {
+                console.log('📦 Got conversations:', snapshot.docs.length);
+                const convs = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })) as Conversation[];
+                setConversations(convs);
+                setLoading(false);
+            },
+            (error) => {
+                console.error('❌ Error loading conversations:', error);
+                console.error('Error code:', error.code);
+                console.error('Error message:', error.message);
+                setLoading(false);
+            }
+        );
 
         return () => unsubscribe();
     }, [user]);
@@ -59,8 +70,28 @@ export default function ConversationsPage() {
             chat.lastMessage?.toLowerCase().includes(searchTerm.toLowerCase());
     });
 
-    if (authLoading) {
-        return <div className="min-h-screen flex items-center justify-center">טוען...</div>;
+    if (authLoading || (loading && user)) {
+        return (
+            <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black pb-20 md:pb-0">
+                <div className="max-w-2xl mx-auto h-screen bg-gray-800/40 md:shadow-2xl md:border md:border-gray-700/50">
+                    <div className="p-4 border-b border-gray-700/50">
+                        <div className="h-8 bg-gray-700 rounded-lg animate-pulse mb-3 w-32" />
+                        <div className="h-10 bg-gray-700 rounded-full animate-pulse" />
+                    </div>
+                    <div className="p-4 space-y-4">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="flex gap-4 animate-pulse">
+                                <div className="w-12 h-12 bg-gray-700 rounded-full" />
+                                <div className="flex-1 space-y-2">
+                                    <div className="h-4 bg-gray-700 rounded w-1/3" />
+                                    <div className="h-3 bg-gray-700 rounded w-2/3" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     if (!user) {
@@ -115,9 +146,6 @@ export default function ConversationsPage() {
                 </div>
 
                 {/* List */}
-                {loading && (
-                    <div className="text-center py-8 text-gray-400">טוען...</div>
-                )}
 
                 {!loading && filteredConversations.length === 0 && (
                     <div className="text-center py-16">
@@ -148,14 +176,14 @@ export default function ConversationsPage() {
                                 key={chat.id}
                                 href={`/conversations/${chat.id}`}
                                 className={`block p-4 transition-colors ${hasUnread
-                                        ? 'bg-indigo-900/20 hover:bg-indigo-900/30 border-r-2 border-indigo-500'
-                                        : 'hover:bg-gray-700/30'
+                                    ? 'bg-indigo-900/20 hover:bg-indigo-900/30 border-r-2 border-indigo-500'
+                                    : 'hover:bg-gray-700/30'
                                     }`}
                             >
                                 <div className="flex gap-4">
                                     <div className={`relative w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg ${hasUnread
-                                            ? 'bg-gradient-to-br from-indigo-500 to-purple-500 ring-2 ring-indigo-400'
-                                            : 'bg-gradient-to-br from-indigo-400 to-purple-400'
+                                        ? 'bg-gradient-to-br from-indigo-500 to-purple-500 ring-2 ring-indigo-400'
+                                        : 'bg-gradient-to-br from-indigo-400 to-purple-400'
                                         }`}>
                                         {otherName[0]}
                                         {hasUnread && (

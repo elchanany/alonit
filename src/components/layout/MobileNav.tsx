@@ -10,7 +10,7 @@ import { db } from '@/lib/firebase';
 
 export function MobileNav() {
     const pathname = usePathname();
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [unreadCount, setUnreadCount] = useState(0);
 
     // Listen for unread notifications
@@ -35,12 +35,29 @@ export function MobileNav() {
 
     const isActive = (path: string) => pathname === path;
 
+    // Show skeleton during auth loading
+    if (authLoading) {
+        return (
+            <div className="fixed bottom-0 left-0 right-0 h-16 bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 border-t border-indigo-500/30 flex items-center justify-around z-[100] md:hidden pb-1 shadow-[0_-4px_15px_-1px_rgba(99,102,241,0.3)]">
+                <div className="flex flex-col items-center gap-1 p-2">
+                    <div className="w-6 h-6 bg-gray-700/50 rounded-full animate-pulse" />
+                    <div className="w-8 h-2 bg-gray-700/50 rounded animate-pulse mt-1" />
+                </div>
+                <div className="w-12 h-12 bg-indigo-600/50 rounded-full -mt-6 animate-pulse" />
+                <div className="flex flex-col items-center gap-1 p-2">
+                    <div className="w-6 h-6 bg-gray-700/50 rounded-full animate-pulse" />
+                    <div className="w-8 h-2 bg-gray-700/50 rounded animate-pulse mt-1" />
+                </div>
+            </div>
+        );
+    }
+
     // Different nav items based on auth state
     const navItems = user ? [
         { href: '/', icon: Home, label: 'ראשי' },
         { href: '/conversations', icon: MessageCircle, label: "צ'אט" },
         { href: '/ask', icon: PlusCircle, label: 'שאל', isMain: true },
-        { href: '/notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined }, // Only show badge if > 0
+        { href: '/notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
         { href: '/user/me', icon: User, label: 'פרופיל' },
     ] : [
         { href: '/', icon: Home, label: 'ראשי' },
@@ -54,7 +71,7 @@ export function MobileNav() {
                 <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex flex-col items-center gap-1 p-2 relative ${item.isMain
+                    className={`flex flex-col items-center gap-1 p-2 relative transition-transform active:scale-90 ${item.isMain
                         ? 'text-white'
                         : isActive(item.href)
                             ? 'text-white'
@@ -62,7 +79,7 @@ export function MobileNav() {
                         }`}
                 >
                     {item.isMain ? (
-                        <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg -mt-6 border-2 border-indigo-400 -ml-1">
+                        <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg -mt-6 border-2 border-indigo-400 -ml-1 active:scale-95 transition-transform">
                             <item.icon size={28} strokeWidth={2} />
                         </div>
                     ) : (
