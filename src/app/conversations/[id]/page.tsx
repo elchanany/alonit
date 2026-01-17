@@ -5,11 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause } from 'lucide-react';
+import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause, Smile } from 'lucide-react';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useToast } from '@/context/ToastContext';
 import AudioPlayer from '@/components/chat/AudioPlayer';
+import { EmojiStickerPicker } from '@/components/ui/EmojiStickerPicker';
 
 interface Message {
     id: string;
@@ -75,6 +76,9 @@ export default function ChatPage() {
     const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null);
     const [showServiceError, setShowServiceError] = useState(false);
     const [serviceErrorDetails, setServiceErrorDetails] = useState('');
+
+    // Emoji picker state
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
     // Scroll to bottom on new messages
     const scrollToBottom = () => {
@@ -543,6 +547,51 @@ export default function ChatPage() {
         }
     };
 
+    // Emoji handler - insert emoji at cursor position
+    const handleEmojiSelect = (emoji: string) => {
+        if (inputRef.current) {
+            const start = inputRef.current.selectionStart || 0;
+            const end = inputRef.current.selectionEnd || 0;
+            const newValue = newMessage.slice(0, start) + emoji + newMessage.slice(end);
+            setNewMessage(newValue);
+            // Set cursor after emoji
+            setTimeout(() => {
+                if (inputRef.current) {
+                    inputRef.current.selectionStart = start + emoji.length;
+                    inputRef.current.selectionEnd = start + emoji.length;
+                    inputRef.current.focus();
+                }
+            }, 0);
+        } else {
+            setNewMessage(prev => prev + emoji);
+        }
+    };
+
+    // Sticker handler - send as image message (for future use)
+    const handleStickerSelect = async (stickerUrl: string) => {
+        if (!user || sending) return;
+        setShowEmojiPicker(false);
+        setSending(true);
+        try {
+            const messageData = {
+                senderId: user.uid,
+                senderName: user.displayName || 'משתמש',
+                content: '🎨 סטיקר',
+                imageUrl: stickerUrl,
+                createdAt: serverTimestamp()
+            };
+            await addDoc(collection(db, 'conversations', conversationId, 'messages'), messageData);
+            await updateDoc(doc(db, 'conversations', conversationId), {
+                lastMessage: '🎨 סטיקר',
+                lastMessageTime: serverTimestamp()
+            });
+        } catch (error) {
+            showToast('שגיאה בשליחת הסטיקר', 'error');
+        } finally {
+            setSending(false);
+        }
+    };
+
     // Show skeleton while loading auth or data
     if (loading) {
         return (
@@ -799,7 +848,15 @@ export default function ChatPage() {
                             </div>
                         )}
 
-                        <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
+                        <form onSubmit={handleSendMessage} className="flex gap-1 items-center relative">
+                            {/* Emoji Picker */}
+                            <EmojiStickerPicker
+                                isOpen={showEmojiPicker}
+                                onClose={() => setShowEmojiPicker(false)}
+                                onEmojiSelect={handleEmojiSelect}
+                                onStickerSelect={handleStickerSelect}
+                            />
+
                             <input
                                 type="file"
                                 ref={fileInputRef}
@@ -807,6 +864,21 @@ export default function ChatPage() {
                                 accept="image/*"
                                 className="hidden"
                             />
+
+                            {/* Emoji button */}
+                            <button
+                                type="button"
+                                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full ${showEmojiPicker
+                                    ? 'text-yellow-400 bg-yellow-500/20'
+                                    : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10'
+                                    }`}
+                                disabled={isRecording}
+                            >
+                                <Smile size={18} />
+                            </button>
+
+                            {/* Image button */}
                             <button
                                 type="button"
                                 onClick={() => {
@@ -817,10 +889,10 @@ export default function ChatPage() {
                                         fileInputRef.current?.click();
                                     }
                                 }}
-                                className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-indigo-400 transition-colors"
+                                className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-indigo-400 transition-colors active:scale-95 rounded-full hover:bg-indigo-500/10"
                                 disabled={isRecording}
                             >
-                                <ImageIcon size={20} />
+                                <ImageIcon size={18} />
                             </button>
 
                             {/* Mic button - Click toggle on desktop, hold on mobile */}
@@ -836,13 +908,13 @@ export default function ChatPage() {
                                 }}
                                 onTouchStart={(e) => { e.preventDefault(); if (!isRecording) startRecording(); }}
                                 onTouchEnd={(e) => { e.preventDefault(); if (isRecording) stopRecording(); }}
-                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording
+                                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 ${isRecording
                                     ? 'text-white bg-red-500 scale-110 shadow-lg shadow-red-500/50 animate-pulse'
                                     : 'text-gray-400 hover:text-purple-400 hover:bg-purple-500/20'
                                     }`}
                                 title={isRecording ? 'לחץ שוב לעצירה' : 'לחץ להקלטה (במובייל: החזק)'}
                             >
-                                <Mic size={20} />
+                                <Mic size={18} />
                             </button>
                             <input
                                 type="text"
