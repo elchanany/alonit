@@ -889,13 +889,13 @@ export default function ChatPage() {
                                 <ImageIcon size={18} />
                             </button>
 
-                            {/* Mic button - Click toggle on desktop, hold on mobile */}
+                            {/* Mic button */}
                             <button
                                 type="button"
                                 onClick={() => {
-                                    // Desktop: click to toggle
                                     if (isRecording) {
                                         stopRecording();
+                                        // Cancel recording if clicked here (X style behavior usually, but here just stop)
                                     } else {
                                         startRecording();
                                     }
@@ -903,26 +903,44 @@ export default function ChatPage() {
                                 onTouchStart={(e) => { e.preventDefault(); if (!isRecording) startRecording(); }}
                                 onTouchEnd={(e) => { e.preventDefault(); if (isRecording) stopRecording(); }}
                                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 ${isRecording
-                                    ? 'text-white bg-red-500 scale-110 shadow-lg shadow-red-500/50 animate-pulse'
+                                    ? 'text-red-500 bg-red-500/10' // Removed animate-pulse and scale spam
                                     : 'text-gray-400 hover:text-purple-400 hover:bg-purple-500/20'
                                     }`}
-                                title={isRecording ? 'לחץ שוב לעצירה' : 'לחץ להקלטה (במובייל: החזק)'}
+                                title={isRecording ? 'לחץ לעצירה' : 'לחץ להקלטה'}
                             >
-                                <Mic size={18} />
+                                {isRecording ? <Square size={16} className="fill-current" /> : <Mic size={18} />}
                             </button>
                             <input
                                 type="text"
                                 ref={inputRef}
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
-                                placeholder="כתוב הודעה..."
-                                className="flex-1 bg-gray-700/50 border border-gray-600 rounded-full px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-white placeholder-gray-500 transition-all"
-                                disabled={sending}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSendMessage(e);
+                                    }
+                                }}
+                                placeholder={isRecording ? 'מקליט...' : 'כתוב הודעה...'}
+                                className={`flex-1 bg-gray-700/50 border border-gray-600 rounded-full px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-white placeholder-gray-500 transition-all ${isRecording ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                disabled={sending || isRecording}
+                                autoFocus
                             />
                             <button
                                 type="submit"
-                                disabled={(!newMessage.trim() && !selectedFile && !audioBlob) || sending}
-                                className="w-10 h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center disabled:opacity-50 transition-all"
+                                // Allow sending if message, file, or RECORDING is active
+                                disabled={(!newMessage.trim() && !selectedFile && !audioBlob && !isRecording) || sending}
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording
+                                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50'
+                                    }`}
+                                onClick={(e) => {
+                                    if (isRecording) {
+                                        e.preventDefault();
+                                        stopRecording();
+                                        // The recording logic will trigger auto-send via useEffect
+                                    }
+                                }}
                             >
                                 {uploadingImage ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                             </button>
@@ -965,22 +983,22 @@ export default function ChatPage() {
                 </div>
             )}
 
-            {/* Lightbox Modal for Images */}
+            {/* Lightbox for viewing images - Blur background & Full size */}
             {lightboxImage && (
                 <div
-                    className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
                     onClick={() => setLightboxImage(null)}
                 >
                     <button
                         onClick={() => setLightboxImage(null)}
-                        className="absolute top-4 right-4 w-10 h-10 bg-gray-800/80 hover:bg-gray-700 rounded-full flex items-center justify-center text-white transition-colors z-10"
+                        className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 backdrop-blur rounded-full flex items-center justify-center text-white transition-colors z-50 shadow-lg"
                     >
                         <X size={24} />
                     </button>
                     <img
                         src={lightboxImage}
                         alt="תמונה מוגדלת"
-                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}
                     />
                 </div>

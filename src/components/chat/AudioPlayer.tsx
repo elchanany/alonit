@@ -69,16 +69,23 @@ export default function AudioPlayer({ src, duration, isMine = false }: AudioPlay
 
     const progress = audioDuration > 0 ? currentTime / audioDuration : 0;
 
+    // Calculate dynamic width based on duration (min 180px, max 300px or full width)
+    // 10 seconds -> 180px, 60 seconds -> 300px
+    const dynamicWidth = Math.min(320, Math.max(180, audioDuration * 5 + 160));
+
     return (
-        <div className="flex items-center gap-2 py-1">
+        <div
+            className="flex items-center gap-2 py-1 transition-all duration-300"
+            style={{ width: `${dynamicWidth}px`, maxWidth: '100%' }}
+        >
             <audio ref={audioRef} src={src} preload="metadata" />
 
             {/* Play/Pause Button */}
             <button
                 onClick={togglePlay}
                 className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all transform hover:scale-105 active:scale-95 ${isMine
-                        ? 'bg-white/20 hover:bg-white/30'
-                        : 'bg-purple-600 hover:bg-purple-500'
+                    ? 'bg-white/20 hover:bg-white/30'
+                    : 'bg-purple-600 hover:bg-purple-500'
                     }`}
             >
                 {isPlaying ? (
@@ -97,12 +104,12 @@ export default function AudioPlayer({ src, duration, isMine = false }: AudioPlay
                             key={i}
                             onClick={(e) => handleBarClick(i, e)}
                             className={`w-[3px] rounded-full transition-all duration-75 ${isPlayed
-                                    ? isMine
-                                        ? 'bg-white'
-                                        : 'bg-purple-400'
-                                    : isMine
-                                        ? 'bg-white/40'
-                                        : 'bg-gray-500'
+                                ? isMine
+                                    ? 'bg-white'
+                                    : 'bg-purple-400'
+                                : isMine
+                                    ? 'bg-white/40'
+                                    : 'bg-gray-500'
                                 }`}
                             style={{
                                 height: `${height * 100}%`,
