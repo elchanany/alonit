@@ -134,6 +134,14 @@ export default function ChatPage() {
     // Auto-send audio when recording stops
     useEffect(() => {
         if (audioBlob && !sending && user) {
+            // Check if recording is too short (less than 1 second)
+            if (recordingDuration < 1) {
+                showToast('ההקלטה קצרה מדי, נסה שוב', 'info');
+                setAudioBlob(null);
+                setRecordingDuration(0);
+                return;
+            }
+
             // Trigger send automatically
             const autoSendAudio = async () => {
                 setSending(true);
@@ -695,8 +703,8 @@ export default function ChatPage() {
                                                 key={i}
                                                 className="flex-1 bg-red-400 rounded-full transition-all duration-75"
                                                 style={{
-                                                    height: `${Math.min(100, (audioLevel * 100) + Math.random() * 30)}%`,
-                                                    opacity: audioLevel > 0.1 ? 0.7 + Math.random() * 0.3 : 0.3
+                                                    height: `${Math.min(100, (audioLevel * 300) + Math.random() * 20 + 10)}%`,
+                                                    opacity: 0.5 + audioLevel * 0.5 + Math.random() * 0.2
                                                 }}
                                             />
                                         ))}
@@ -725,21 +733,26 @@ export default function ChatPage() {
                                 <ImageIcon size={20} />
                             </button>
 
-                            {/* Mic button - Press to talk */}
+                            {/* Mic button - Click toggle on desktop, hold on mobile */}
                             <button
                                 type="button"
-                                onMouseDown={(e) => { e.preventDefault(); if (!isRecording) startRecording(); }}
-                                onMouseUp={() => { if (isRecording) stopRecording(); }}
-                                onMouseLeave={() => { if (isRecording) stopRecording(); }}
+                                onClick={() => {
+                                    // Desktop: click to toggle
+                                    if (isRecording) {
+                                        stopRecording();
+                                    } else {
+                                        startRecording();
+                                    }
+                                }}
                                 onTouchStart={(e) => { e.preventDefault(); if (!isRecording) startRecording(); }}
-                                onTouchEnd={() => { if (isRecording) stopRecording(); }}
+                                onTouchEnd={(e) => { e.preventDefault(); if (isRecording) stopRecording(); }}
                                 className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording
-                                    ? 'text-white bg-red-500 scale-110 shadow-lg shadow-red-500/50'
+                                    ? 'text-white bg-red-500 scale-110 shadow-lg shadow-red-500/50 animate-pulse'
                                     : 'text-gray-400 hover:text-purple-400 hover:bg-purple-500/20'
                                     }`}
-                                title="לחץ והחזק להקלטה"
+                                title={isRecording ? 'לחץ שוב לעצירה' : 'לחץ להקלטה (במובייל: החזק)'}
                             >
-                                <Mic size={20} className={isRecording ? 'animate-pulse' : ''} />
+                                <Mic size={20} />
                             </button>
                             <input
                                 type="text"
