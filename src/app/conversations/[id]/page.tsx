@@ -849,13 +849,7 @@ export default function ChatPage() {
                         )}
 
                         <form onSubmit={handleSendMessage} className="flex gap-1 items-center relative">
-                            {/* Emoji Picker */}
-                            <EmojiStickerPicker
-                                isOpen={showEmojiPicker}
-                                onClose={() => setShowEmojiPicker(false)}
-                                onEmojiSelect={handleEmojiSelect}
-                                onStickerSelect={handleStickerSelect}
-                            />
+
 
                             <input
                                 type="file"
@@ -934,6 +928,18 @@ export default function ChatPage() {
                             </button>
                         </form>
                     </div>
+
+                    {/* Emoji/Sticker Keyboard */}
+                    {showEmojiPicker && (
+                        <div className="shrink-0 z-10 w-full animate-in slide-in-from-bottom-5 duration-200 bg-gray-900 border-t border-gray-800">
+                            <EmojiStickerPicker
+                                isOpen={true}
+                                onClose={() => setShowEmojiPicker(false)}
+                                onEmojiSelect={handleEmojiSelect}
+                                onStickerSelect={handleStickerSelect}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 
