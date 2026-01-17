@@ -179,7 +179,7 @@ export default function ChatPage() {
         const unsubscribe = onSnapshot(doc(db, 'users', otherId), (docSnap) => {
             const data = docSnap.data();
             const lastSeen = data?.lastSeen?.toDate();
-            if (lastSeen && Date.now() - lastSeen.getTime() < 2 * 60 * 1000) {
+            if (lastSeen && Date.now() - lastSeen.getTime() < 30 * 1000) {  // 30 seconds threshold
                 setOtherUserStatus('online');
             } else {
                 setOtherUserStatus(lastSeen || null);
