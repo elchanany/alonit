@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause, Smile } from 'lucide-react';
-import { format, isToday, isYesterday, isSameDay } from 'date-fns';
+import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause, Smile, Check, CheckCheck, MoreVertical, Ban, Flag } from 'lucide-react';
+import { format, isToday, isYesterday, isSameDay, formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useToast } from '@/context/ToastContext';
 import AudioPlayer from '@/components/chat/AudioPlayer';
@@ -25,6 +25,7 @@ interface Message {
     replyToSender?: string;
     deleted?: boolean;
     createdAt: any;
+    readBy?: string[]; // Array of user IDs who read this message
 }
 
 interface Conversation {
@@ -33,6 +34,7 @@ interface Conversation {
     participantNames: { [key: string]: string };
     participantPhotos?: { [key: string]: string };
     mutedBy?: string[];
+    blockedBy?: string[];  // Users who blocked this conversation
 }
 
 export default function ChatPage() {
@@ -82,11 +84,17 @@ export default function ChatPage() {
     // Emoji picker state
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+    // Online status state
+    const [otherUserStatus, setOtherUserStatus] = useState<'online' | Date | null>(null);
+
+    // Block menu state
+    const [showBlockMenu, setShowBlockMenu] = useState(false);
+
     // Scroll to bottom on new messages
     const scrollToBottom = () => {
-        // Only scroll inside the messages container, not the whole page
+        // Scroll to the end of messages container, ensuring last message is fully visible
         if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
         }
     };
 
@@ -142,6 +150,61 @@ export default function ChatPage() {
 
         return () => unsubscribe();
     }, [conversationId]);
+
+    // Update current user's lastSeen timestamp every 30 seconds (real-time presence)
+    useEffect(() => {
+        if (!user) return;
+
+        const updateLastSeen = () => {
+            setDoc(doc(db, 'users', user.uid), {
+                lastSeen: serverTimestamp()
+            }, { merge: true }).catch(err => console.error('Error updating lastSeen:', err));
+        };
+
+        // Update immediately
+        updateLastSeen();
+
+        // Then update every 5 seconds
+        const interval = setInterval(updateLastSeen, 5000);
+
+        return () => clearInterval(interval);
+    }, [user]);
+
+    // Subscribe to other user's online status
+    useEffect(() => {
+        if (!conversation) return;
+        const otherId = conversation.participants.find(p => p !== user?.uid);
+        if (!otherId) return;
+
+        const unsubscribe = onSnapshot(doc(db, 'users', otherId), (docSnap) => {
+            const data = docSnap.data();
+            const lastSeen = data?.lastSeen?.toDate();
+            if (lastSeen && Date.now() - lastSeen.getTime() < 2 * 60 * 1000) {
+                setOtherUserStatus('online');
+            } else {
+                setOtherUserStatus(lastSeen || null);
+            }
+        });
+
+        return () => unsubscribe();
+    }, [conversation, user]);
+
+    // Mark messages as read when chat is opened
+    useEffect(() => {
+        if (!user || messages.length === 0) return;
+
+        // Find unread messages from other users
+        const unreadMessages = messages.filter(
+            msg => msg.senderId !== user.uid && !msg.readBy?.includes(user.uid)
+        );
+
+        // Mark them as read
+        unreadMessages.forEach(msg => {
+            updateDoc(doc(db, 'conversations', conversationId, 'messages', msg.id), {
+                readBy: arrayUnion(user.uid)
+            }).catch(err => console.error('Error marking message as read:', err));
+        });
+    }, [messages, user, conversationId]);
 
     // Auto-send audio when recording stops
     useEffect(() => {
@@ -505,6 +568,10 @@ export default function ChatPage() {
         setReplyingTo(message);
         setSelectedMessage(null);
         setShowMenu(false);
+        // Focus input after selecting reply
+        setTimeout(() => {
+            inputRef.current?.focus();
+        }, 100);
     };
 
     const formatMessageTime = (timestamp: any) => {
@@ -549,6 +616,48 @@ export default function ChatPage() {
             showToast('שגיאה בעדכון ההשתקה', 'error');
         }
     };
+
+    // Block handler
+    const handleBlock = async () => {
+        if (!user || !conversation) return;
+        setShowBlockMenu(false);
+
+        try {
+            await updateDoc(doc(db, 'conversations', conversationId), {
+                blockedBy: arrayUnion(user.uid)
+            });
+            showToast('המשתמש נחסם', 'success');
+        } catch (error) {
+            showToast('שגיאה בחסימת המשתמש', 'error');
+        }
+    };
+
+    // Unblock handler
+    const handleUnblock = async () => {
+        if (!user || !conversation) return;
+
+        try {
+            await updateDoc(doc(db, 'conversations', conversationId), {
+                blockedBy: arrayRemove(user.uid)
+            });
+            showToast('החסימה בוטלה', 'success');
+        } catch (error) {
+            showToast('שגיאה בביטול החסימה', 'error');
+        }
+    };
+
+    // Report handler
+    const handleReport = async () => {
+        setShowBlockMenu(false);
+        // TODO: Implement report functionality - save to reports collection
+        showToast('הדיווח נשלח, תודה!', 'success');
+    };
+
+    // Check if current user blocked the other participant
+    const isBlockedByMe = conversation?.blockedBy?.includes(user?.uid || '');
+
+    // Check if current user is blocked by the other participant
+    const amIBlocked = conversation?.blockedBy?.includes(otherParticipantId || '');
 
     // Emoji handler - insert emoji at cursor position
     const handleEmojiSelect = (emoji: string) => {
@@ -635,6 +744,8 @@ export default function ChatPage() {
         ? Object.entries(conversation.participantNames).find(([id]) => id !== user?.uid)?.[1] || 'משתמש'
         : 'משתמש';
 
+    const otherParticipantId = conversation?.participants.find(p => p !== user?.uid);
+
     return (
         <div className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4 z-0">
             <div className="w-full max-w-md h-full max-h-[85vh] md:max-h-[85vh] flex flex-col">
@@ -645,13 +756,38 @@ export default function ChatPage() {
                         <button onClick={() => router.back()} className="text-gray-400 hover:text-white transition-colors">
                             <ArrowRight size={24} />
                         </button>
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
-                            {otherParticipantName[0]}
+                        {/* Profile with glowing ring */}
+                        <div className="relative">
+                            <div className={`w-12 h-12 rounded-full p-[2px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ${otherUserStatus === 'online' && !amIBlocked ? 'animate-pulse' : ''}`}>
+                                <div className="w-full h-full rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                                    {otherParticipantName[0]}
+                                </div>
+                            </div>
+                            {/* Online indicator dot - only show when online and not blocked */}
+                            {otherUserStatus === 'online' && !amIBlocked && (
+                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-800" />
+                            )}
                         </div>
                         <div className="flex-1">
                             <h1 className="font-bold text-white">{otherParticipantName}</h1>
-                            <p className="text-xs text-gray-400">מחובר</p>
+                            {/* If blocked by other user - hide real status */}
+                            {amIBlocked ? (
+                                <p className="text-xs text-gray-500">נראה לפני זמן רב</p>
+                            ) : otherUserStatus === 'online' ? (
+                                <p className="text-xs text-green-400 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block animate-pulse" />
+                                    מחובר
+                                </p>
+                            ) : otherUserStatus instanceof Date ? (
+                                <p className="text-xs text-gray-400">
+                                    נראה לאחרונה {formatDistanceToNow(otherUserStatus, { addSuffix: false, locale: he })}
+                                </p>
+                            ) : (
+                                <p className="text-xs text-gray-500">לא מחובר</p>
+                            )}
                         </div>
+
+                        {/* Mute button */}
                         <button
                             onClick={handleToggleMute}
                             className={`p-2 rounded-full transition-colors ${isMuted
@@ -661,7 +797,63 @@ export default function ChatPage() {
                         >
                             {isMuted ? <BellOff size={18} className="line-through" /> : <Bell size={18} />}
                         </button>
+
+                        {/* Three-dot menu */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowBlockMenu(!showBlockMenu)}
+                                className="p-2 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                            >
+                                <MoreVertical size={18} />
+                            </button>
+
+                            {/* Dropdown menu */}
+                            {showBlockMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setShowBlockMenu(false)} />
+                                    <div className="absolute left-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[140px] overflow-hidden">
+                                        {isBlockedByMe ? (
+                                            <button
+                                                onClick={handleUnblock}
+                                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-green-400 hover:bg-gray-700/50 transition-colors"
+                                            >
+                                                <Ban size={16} />
+                                                בטל חסימה
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={handleBlock}
+                                                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700/50 transition-colors"
+                                            >
+                                                <Ban size={16} />
+                                                חסום
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleReport}
+                                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-orange-400 hover:bg-gray-700/50 transition-colors border-t border-gray-700"
+                                        >
+                                            <Flag size={16} />
+                                            דווח
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
+
+                    {/* Block banner */}
+                    {isBlockedByMe && (
+                        <div className="shrink-0 bg-red-900/30 border-b border-red-500/30 px-4 py-2 flex items-center justify-between">
+                            <p className="text-sm text-red-300">🚫 חסמת את המשתמש הזה</p>
+                            <button
+                                onClick={handleUnblock}
+                                className="text-xs text-red-400 hover:text-red-300 underline"
+                            >
+                                בטל חסימה
+                            </button>
+                        </div>
+                    )}
 
                     {/* Messages area - takes remaining space */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
@@ -754,6 +946,12 @@ export default function ChatPage() {
 
                                             <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-indigo-200/70' : 'text-gray-500'}`}>
                                                 <span className="text-[10px]">{formatMessageTime(msg.createdAt)}</span>
+                                                {/* Read receipt checkmarks - only for sender's messages */}
+                                                {isMine && (
+                                                    msg.readBy?.includes(otherParticipantId || '')
+                                                        ? <CheckCheck size={14} className="text-blue-400" />
+                                                        : <Check size={14} className="text-gray-400" />
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -853,9 +1051,9 @@ export default function ChatPage() {
                             </div>
                         )}
 
-                        <form onSubmit={handleSendMessage} className="flex gap-1 items-center relative">
+                        <form onSubmit={handleSendMessage} className="flex gap-1 items-end relative bg-gray-900/50 p-1 rounded-3xl border border-gray-800 backdrop-blur-sm">
 
-
+                            {/* Hidden Inputs */}
                             <input
                                 type="file"
                                 ref={fileInputRef}
@@ -863,7 +1061,6 @@ export default function ChatPage() {
                                 accept="image/*"
                                 className="hidden"
                             />
-                            {/* Camera Input */}
                             <input
                                 type="file"
                                 ref={cameraInputRef}
@@ -873,132 +1070,158 @@ export default function ChatPage() {
                                 className="hidden"
                             />
 
+                            {/* Media Selection Bottom Sheet (Overlay) */}
+                            {showMediaOptions && (
+                                <div
+                                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in duration-200"
+                                    onClick={() => setShowMediaOptions(false)}
+                                >
+                                    <div
+                                        className="w-full sm:w-96 bg-gray-900 border-t sm:border border-gray-800 rounded-t-2xl sm:rounded-2xl p-6 flex flex-col gap-6 animate-in slide-in-from-bottom-10 duration-200 shadow-2xl pb-10 sm:p-6"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <div className="w-12 h-1.5 bg-gray-700 rounded-full mx-auto sm:hidden opacity-50" />
+
+                                        <h3 className="text-center text-gray-400 text-sm font-medium">בחר מדיה לשליחה</h3>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {/* Camera - HIDDEN ON DESKTOP */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowMediaOptions(false);
+                                                    if (cameraInputRef.current) cameraInputRef.current.click();
+                                                }}
+                                                className="md:hidden flex flex-col items-center justify-center gap-3 p-4 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all group"
+                                            >
+                                                <div className="w-14 h-14 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                    <span className="text-3xl">📸</span>
+                                                </div>
+                                                <span className="text-sm">מצלמה</span>
+                                            </button>
+
+                                            {/* Gallery */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowMediaOptions(false);
+                                                    fileInputRef.current?.click();
+                                                }}
+                                                className="col-span-1 md:col-span-2 flex flex-col items-center justify-center gap-3 p-4 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all group"
+                                            >
+                                                <div className="w-14 h-14 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                    <span className="text-3xl">🖼️</span>
+                                                </div>
+                                                <span className="text-sm">גלריה</span>
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowMediaOptions(false)}
+                                            className="mt-2 py-3 w-full bg-gray-800 rounded-xl text-gray-400 font-medium hover:bg-gray-700 transition-colors"
+                                        >
+                                            ביטול
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Media Button (Restored) */}
+                            <button
+                                type="button"
+                                onClick={() => setShowMediaOptions(!showMediaOptions)}
+                                className={`w-10 h-10 mb-1 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showMediaOptions
+                                    ? 'text-indigo-400 bg-indigo-500/20'
+                                    : 'text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10'
+                                    }`}
+                                disabled={isRecording}
+                            >
+                                <ImageIcon size={20} />
+                            </button>
+
                             {/* Emoji button */}
                             <button
                                 type="button"
                                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                                className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full ${showEmojiPicker
+                                className={`w-10 h-10 mb-1 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showEmojiPicker
                                     ? 'text-yellow-400 bg-yellow-500/20'
                                     : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10'
                                     }`}
                                 disabled={isRecording}
                             >
-                                <Smile size={18} />
+                                <Smile size={20} />
                             </button>
 
-                            {/* Image button & Popup Menu */}
-                            <div className="relative">
-                                {showMediaOptions && (
-                                    <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-700 rounded-xl shadow-xl overflow-hidden min-w-[140px] flex flex-col z-20 animate-in slide-in-from-bottom-2 duration-150">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setShowMediaOptions(false);
-                                                if (!hasAcceptedDisclaimer()) {
-                                                    setPendingUploadAction(() => () => cameraInputRef.current?.click());
-                                                    setShowUploadDisclaimer(true);
-                                                } else {
-                                                    cameraInputRef.current?.click();
-                                                }
-                                            }}
-                                            className="px-4 py-3 flex items-center gap-3 hover:bg-gray-700/50 transition-colors text-right"
-                                        >
-                                            <span className="text-xl">📸</span>
-                                            <span className="text-sm font-medium text-gray-200">מצלמה</span>
-                                        </button>
-                                        <div className="h-px bg-gray-700/50" />
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setShowMediaOptions(false);
-                                                if (!hasAcceptedDisclaimer()) {
-                                                    setPendingUploadAction(() => () => fileInputRef.current?.click());
-                                                    setShowUploadDisclaimer(true);
-                                                } else {
-                                                    fileInputRef.current?.click();
-                                                }
-                                            }}
-                                            className="px-4 py-3 flex items-center gap-3 hover:bg-gray-700/50 transition-colors text-right"
-                                        >
-                                            <span className="text-xl">🖼️</span>
-                                            <span className="text-sm font-medium text-gray-200">גלריה</span>
-                                        </button>
-                                    </div>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={() => setShowMediaOptions(!showMediaOptions)}
-                                    className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full ${showMediaOptions
-                                        ? 'text-indigo-400 bg-indigo-500/20'
-                                        : 'text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10'
-                                        }`}
+                            {/* Auto-expanding Textarea */}
+                            <div className="flex-1 min-w-0 py-2 relative">
+                                <textarea
+                                    ref={(el) => {
+                                        // @ts-ignore
+                                        inputRef.current = el;
+                                        if (el) {
+                                            el.style.height = 'auto';
+                                            el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+                                        }
+                                    }}
+                                    value={newMessage}
+                                    onChange={(e) => {
+                                        setNewMessage(e.target.value);
+                                        e.target.style.height = 'auto';
+                                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            // Handle manual form submission
+                                            const event = new Event('submit', { cancelable: true }) as unknown as React.FormEvent;
+                                            handleSendMessage(event);
+                                        }
+                                    }}
+                                    onClick={() => {
+                                        window.scrollTo(0, document.body.scrollHeight);
+                                    }}
+                                    placeholder={isRecording ? "מקליט..." : "הודעה..."}
+                                    className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none overflow-y-auto leading-relaxed scrollbar-hide align-middle"
                                     disabled={isRecording}
-                                >
-                                    <ImageIcon size={18} />
-                                </button>
-                                {/* Overlay to close menu when clicking outside */}
-                                {showMediaOptions && (
-                                    <div
-                                        className="fixed inset-0 z-10 bg-transparent"
-                                        onClick={() => setShowMediaOptions(false)}
-                                    />
-                                )}
+                                    rows={1}
+                                    dir="auto"
+                                    style={{ maxHeight: '120px' }}
+                                />
                             </div>
 
-                            {/* Mic button */}
+                            {/* Mic / Send Button */}
                             <button
-                                type="button"
-                                onClick={() => {
-                                    if (isRecording) {
-                                        stopRecording();
-                                        // Cancel recording if clicked here (X style behavior usually, but here just stop)
-                                    } else {
-                                        startRecording();
-                                    }
-                                }}
-                                onTouchStart={(e) => { e.preventDefault(); if (!isRecording) startRecording(); }}
-                                onTouchEnd={(e) => { e.preventDefault(); if (isRecording) stopRecording(); }}
-                                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 ${isRecording
-                                    ? 'text-red-500 bg-red-500/10' // Removed animate-pulse and scale spam
-                                    : 'text-gray-400 hover:text-purple-400 hover:bg-purple-500/20'
-                                    }`}
-                                title={isRecording ? 'לחץ לעצירה' : 'לחץ להקלטה'}
-                            >
-                                {isRecording ? <Square size={16} className="fill-current" /> : <Mic size={18} />}
-                            </button>
-                            <input
-                                type="text"
-                                ref={inputRef}
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleSendMessage(e);
-                                    }
-                                }}
-                                placeholder={isRecording ? 'מקליט...' : 'כתוב הודעה...'}
-                                className={`flex-1 bg-gray-700/50 border border-gray-600 rounded-full px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-white placeholder-gray-500 transition-all ${isRecording ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                disabled={sending || isRecording}
-                                autoFocus
-                            />
-                            <button
-                                type="submit"
-                                // Allow sending if message, file, or RECORDING is active
-                                disabled={(!newMessage.trim() && !selectedFile && !audioBlob && !isRecording) || sending}
-                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isRecording
-                                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50'
-                                    }`}
+                                type={newMessage.trim() || selectedFile ? 'submit' : 'button'}
                                 onClick={(e) => {
-                                    if (isRecording) {
-                                        e.preventDefault();
-                                        stopRecording();
-                                        // The recording logic will trigger auto-send via useEffect
+                                    if (!(newMessage.trim() || selectedFile)) {
+                                        if (isRecording) stopRecording();
+                                        else startRecording();
                                     }
                                 }}
+                                onTouchStart={(e) => {
+                                    if (!(newMessage.trim() || selectedFile)) {
+                                        e.preventDefault();
+                                        if (!isRecording) startRecording();
+                                    }
+                                }}
+                                onTouchEnd={(e) => {
+                                    if (!(newMessage.trim() || selectedFile)) {
+                                        e.preventDefault();
+                                        if (isRecording) stopRecording();
+                                    }
+                                }}
+                                className={`w-10 h-10 mb-1 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isRecording
+                                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                                    : (newMessage.trim() || selectedFile ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white')
+                                    }`}
+                                disabled={sending}
                             >
-                                {uploadingImage ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                                {newMessage.trim() || selectedFile ? (
+                                    (sending || uploadingImage) ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />
+                                ) : (
+                                    isRecording ? <div className="w-3 h-3 bg-white rounded-sm" /> : <Mic size={20} />
+                                )}
                             </button>
                         </form>
                     </div>

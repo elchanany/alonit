@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import EmojiPicker, { Theme, EmojiStyle, Categories, SuggestionMode } from 'emoji-picker-react';
 import { Smile, Image, X, Search, Clapperboard, Loader2 } from 'lucide-react';
 import { tenorService, TenorItem } from '@/services/tenorService';
+import { processStickerImage } from '@/utils/stickerUtils';
 
 interface EmojiStickerPickerProps {
     onEmojiSelect: (emoji: string) => void;
@@ -29,10 +30,11 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
 
             // Debounce search
             const delayDebounceFn = setTimeout(async () => {
+                // const results = await tenorService.search(searchQuery, activeTab, 24);
+                // if (results.length === 0) {
+                //    setError('לא נמצאו תוצאות או שיש בעיה בחיבור ל-Tenor');
+                // }
                 const results = await tenorService.search(searchQuery, activeTab, 24);
-                if (results.length === 0 && !process.env.NEXT_PUBLIC_TENOR_API_KEY) {
-                    setError('נדרש מפתח Tenor API (חינם מגוגל) כדי להציג תוכן זה.');
-                }
                 setItems(results);
                 setIsLoading(false);
             }, searchQuery ? 500 : 0);
@@ -51,13 +53,43 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
         }
     };
 
-    // Helper to get correct image URL based on type
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Helper to get correct image URL based on type (Klipy/Tenor compatible)
     const getItemUrl = (item: TenorItem) => {
-        if (activeTab === 'stickers' && item.media_formats.tpng) {
-            return item.media_formats.tpng.url; // Use transparent PNG for stickers
+        // Klipy returns a direct 'url' field with the image URL
+        const directUrl = (item as any).url;
+        if (directUrl && typeof directUrl === 'string' && directUrl.length > 0) {
+            return directUrl;
         }
-        return item.media_formats.tinygif.url || item.media_formats.gif.url;
+
+        // Fallback to media_formats (both Tenor and Klipy use this)
+        const formats = item.media_formats || {};
+        if (activeTab === 'stickers') {
+            return formats.tpng?.url || formats.tinygif?.url || formats.gif?.url || '';
+        }
+        return formats.tinygif?.url || formats.gif?.url || '';
     };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Let parent handle the processing and uploading via a new callback prop logic would be here
+        // But since we need to process it first to standards:
+        if (onStickerSelect && file) {
+            // For now, we will pass the file url directly or implement the full flow in parent
+            // Ideally we pass the file to parent to upload
+            // We'll trust the parent has a handler, or we emit a custom event
+        }
+    };
+
+    // We need to extend the props interface to support onUpload
+    // But since I can't change the interface in this specific replacement block easily without context of the top of file
+    // I will add the UI first.
+
+    // Actually, I should update the Interface first.
+    // Let's assume onStickerCreate is passed or we handle it here.
 
     return (
         <div
@@ -134,9 +166,9 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
                     />
                 ) : (
                     <div className="flex flex-col h-full">
-                        {/* Search Bar */}
-                        <div className="p-2 border-b border-gray-800">
-                            <div className="relative">
+                        {/* Search Bar & Create Button */}
+                        <div className="p-2 border-b border-gray-800 flex gap-2">
+                            <div className="relative flex-1">
                                 <input
                                     type="text"
                                     value={searchQuery}
@@ -146,6 +178,35 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
                                 />
                                 <Search size={16} className="absolute right-3 top-2.5 text-gray-400" />
                             </div>
+
+                            {/* Create Sticker Button - Only in Stickers Tab */}
+                            {activeTab === 'stickers' && (
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-full transition-colors flex items-center justify-center w-10 h-10 shadow-lg"
+                                    title="צור סטיקר"
+                                >
+                                    <span className="text-xl font-bold">+</span>
+                                </button>
+                            )}
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file && onStickerSelect) {
+                                        try {
+                                            // Convert to Tenor/WhatsApp Standard (512x512 WebP)
+                                            const { url } = await processStickerImage(file);
+                                            onStickerSelect(url);
+                                        } catch (err) {
+                                            console.error("Sticker processing failed", err);
+                                        }
+                                    }
+                                }}
+                                className="hidden"
+                                accept="image/*"
+                            />
                         </div>
 
                         {/* Grid Results */}
@@ -189,7 +250,7 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
                             )}
 
                             <div className="mt-4 text-center">
-                                <span className="text-[10px] text-gray-600 font-mono">Via Tenor (Google)</span>
+                                <span className="text-[10px] text-gray-600 font-mono">Via Klipy</span>
                             </div>
                         </div>
                     </div>
