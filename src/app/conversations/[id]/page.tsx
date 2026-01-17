@@ -408,8 +408,9 @@ export default function ChatPage() {
         const replyData = replyingTo;
         const captionText = imageCaption.trim();
 
-        // Clear UI immediately for better UX
         setNewMessage('');
+        setShowEmojiPicker(false); // Close emoji picker on send
+        setShowMediaOptions(false); // Close media menu if open
         setSelectedFile(null);
         setPreviewImage(null);
         setImageCaption('');
@@ -746,7 +747,9 @@ export default function ChatPage() {
                                             )}
 
                                             {msg.content !== '📷 תמונה' && (
-                                                <p>{msg.content}</p>
+                                                <p className={/^[^a-zA-Z0-9\u0590-\u05FF]{1,8}$/.test(msg.content) ? 'text-5xl py-2' : ''}>
+                                                    {msg.content}
+                                                </p>
                                             )}
 
                                             <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-indigo-200/70' : 'text-gray-500'}`}>
