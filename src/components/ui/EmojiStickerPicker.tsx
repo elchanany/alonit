@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import EmojiPicker, { Theme, EmojiStyle, Categories, SuggestionMode } from 'emoji-picker-react';
 import { Smile, Image, X, Search, Clapperboard, Loader2 } from 'lucide-react';
-import { giphyService, GiphyItem } from '@/services/giphyService';
+import { tenorService, TenorItem } from '@/services/tenorService';
 
 interface EmojiStickerPickerProps {
     onEmojiSelect: (emoji: string) => void;
@@ -14,7 +14,7 @@ interface EmojiStickerPickerProps {
 
 export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onClose }: EmojiStickerPickerProps) {
     const [activeTab, setActiveTab] = useState<'emoji' | 'stickers' | 'gifs'>('emoji');
-    const [items, setItems] = useState<GiphyItem[]>([]);
+    const [items, setItems] = useState<TenorItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [error, setError] = useState<string | null>(null);
@@ -29,11 +29,9 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
 
             // Debounce search
             const delayDebounceFn = setTimeout(async () => {
-                const results = await giphyService.search(searchQuery, activeTab, 24);
-                if (results.length === 0 && !process.env.NEXT_PUBLIC_GIPHY_API_KEY) {
-                    setError('נדרש מפתח Giphy API (חינם) כדי להציג תוכן זה.');
-                } else if (results.length === 0) {
-                    // Empty results but has key
+                const results = await tenorService.search(searchQuery, activeTab, 24);
+                if (results.length === 0 && !process.env.NEXT_PUBLIC_TENOR_API_KEY) {
+                    setError('נדרש מפתח Tenor API (חינם מגוגל) כדי להציג תוכן זה.');
                 }
                 setItems(results);
                 setIsLoading(false);
@@ -51,6 +49,14 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
         if (onStickerSelect) {
             onStickerSelect(url);
         }
+    };
+
+    // Helper to get correct image URL based on type
+    const getItemUrl = (item: TenorItem) => {
+        if (activeTab === 'stickers' && item.media_formats.tpng) {
+            return item.media_formats.tpng.url; // Use transparent PNG for stickers
+        }
+        return item.media_formats.tinygif.url || item.media_formats.gif.url;
     };
 
     return (
@@ -150,10 +156,10 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
                                 </div>
                             ) : error ? (
                                 <div className="text-center p-8">
-                                    <p className="text-red-400 text-sm mb-2 font-bold">חסר מפתח API</p>
+                                    <p className="text-red-400 text-sm mb-2 font-bold">חסר מפתח (Tenor API)</p>
                                     <p className="text-gray-500 text-xs">{error}</p>
                                     <p className="text-gray-600 text-[10px] mt-4">
-                                        (פתח חשבון מפתחים ב-Giphy והוסף את המפתח ל-NV)
+                                        (פתח פרויקט ב-Google Cloud והפעל את Tenor API)
                                     </p>
                                 </div>
                             ) : items.length === 0 ? (
@@ -162,25 +168,28 @@ export function EmojiStickerPicker({ onEmojiSelect, onStickerSelect, isOpen, onC
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-4 gap-2">
-                                    {items.map((item) => (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => handleStickerClick(item.images.fixed_height.url)}
-                                            className="w-full aspect-square rounded-lg bg-gray-800/30 overflow-hidden relative group"
-                                        >
-                                            <img
-                                                src={item.images.fixed_height.url}
-                                                alt={item.title}
-                                                className="w-full h-full object-contain hover:scale-110 transition-transform duration-200"
-                                                loading="lazy"
-                                            />
-                                        </button>
-                                    ))}
+                                    {items.map((item) => {
+                                        const url = getItemUrl(item);
+                                        return (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => handleStickerClick(url)}
+                                                className="w-full aspect-square rounded-lg bg-gray-800/30 overflow-hidden relative group flex items-center justify-center p-1"
+                                            >
+                                                <img
+                                                    src={url}
+                                                    alt={item.content_description}
+                                                    className="max-w-full max-h-full object-contain hover:scale-110 transition-transform duration-200"
+                                                    loading="lazy"
+                                                />
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             )}
 
                             <div className="mt-4 text-center">
-                                <span className="text-[10px] text-gray-600 font-mono">Powered by GIPHY</span>
+                                <span className="text-[10px] text-gray-600 font-mono">Via Tenor (Google)</span>
                             </div>
                         </div>
                     </div>

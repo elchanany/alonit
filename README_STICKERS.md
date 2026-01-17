@@ -1,31 +1,27 @@
 
-# מדריך שילוב סטיקרים ו-GIFs (וויראליים)
+# מדריך סטיקרים ו-GIFs (Tenor מבית Google)
 
-לבקשתך, ביצעתי מחקר מקיף על הסטנדרטים ועל Giphy, והטמעתי את המערכת באתר שלך.
+בהתאם לבקשתך לפתרון **חינמי לחלוטין** וללא הגבלות קשוחות, העברתי את המערכת ל-**Tenor API** (בבעלות Google).
 
-## 1. GIPHY API (הסטנדרט הוויראלי)
+## למה Tenor?
+*   **חינם:** חלק מ-Google Cloud (מכסה ענקית בחינם).
+*   **איכות:** המקור של המקלדת של גוגל (Gboard) ודיסקורד.
+*   **סטיקרים שקופים:** תמיכה מלאה בסטיקרים ללא רקע.
 
-### עלויות ושימוש בחינם
-בדקתי את המצב נכון ל-2025:
-*   **מודל חינמי (Free Tier):** קיים וזמין למפתחים. הוא נקרא "Beta Key" או "Individual".
-*   **מגבלות:** המפתח החינמי מוגבל לכ-100 בקשות בשעה (מספיק לפיתוח ולשימוש אישי).
-*   **Production:** אם האפליקציה מתפרסמת לקהל רחב, צריך לבקש "Upgrade".
+## איך מפעילים? (תהליך חד-פעמי)
 
-### איך זה עובד?
-הטמעתי באתר שלך (בקובץ `EmojiStickerPicker`) מערכת שמתחברת לשרתים של Giphy.
-*   **Trending:** מציג את התוכן הכי ויראלי כרגע.
-*   **Search:** חיפוש חופשי (לדוגמה "חתול מצחיק").
+1.  כנס ל- [Google Cloud Console](https://console.cloud.google.com/).
+2.  צור פרויקט חדש (או בחר קיים).
+3.  בתפריט בצד, לך ל-**APIs & Services** > **Library**.
+4.  חפש **"Tenor API"** ולחץ על **Enable**.
+5.  לך ל-**Credentials** ולחץ על **Create Credentials** -> **API Key**.
+6.  העתק את המפתח שנוצר.
 
-### איך משיגים מפתח? (תהליך של דקה)
-1.  כנס ל- [Giphy Developers](https://developers.giphy.com/).
-2.  לחץ על "Create an App" -> בחר "API".
-3.  קבל **API Key**.
-4.  הוסף אותו לקובץ `.env.local`:
-    ```env
-    NEXT_PUBLIC_GIPHY_API_KEY=YOUR_KEY_HERE
-    ```
+## הגדרת המפתח באתר
+פתח את הקובץ `.env.local` בתיקייה הראשית והוסף את השורה הבאה:
 
-## 2. סטנדרטים ליצירת סטיקרים (כמו בוואטסאפ)
-*   **פורמט:** WebP.
-*   **גודל:** 512x512 פיקסלים, עד 100KB.
-*   **רקע:** שקוף.
+```env
+NEXT_PUBLIC_TENOR_API_KEY=YOUR_COPIED_KEY_HERE
+```
+
+זהו! עכשיו יש לך גישה למיליוני סטיקרים ו-GIFs בחינם. 🚀
