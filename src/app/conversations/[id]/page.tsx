@@ -37,6 +37,20 @@ interface Conversation {
     blockedBy?: string[];  // Users who blocked this conversation
 }
 
+// Helper to format last seen
+const formatLastSeen = (date: Date) => {
+    const now = new Date();
+    const diffInDays = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+
+    if (diffInDays < 2) {
+        return `לפני ${formatDistanceToNow(date, { addSuffix: false, locale: he })}`;
+    } else if (diffInDays < 7) {
+        return `ביום ${format(date, 'EEEE בשעה H:mm', { locale: he })}`;
+    } else {
+        return `בתאריך ${format(date, 'd/M/yyyy', { locale: he })}`;
+    }
+};
+
 export default function ChatPage() {
     const params = useParams();
     const router = useRouter();
@@ -90,12 +104,9 @@ export default function ChatPage() {
     // Block menu state
     const [showBlockMenu, setShowBlockMenu] = useState(false);
 
-    // Scroll to bottom on new messages
-    const scrollToBottom = () => {
-        // Scroll to the end of messages container, ensuring last message is fully visible
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
+    // Scroll to bottom helper
+    const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+        messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
     };
 
     // Scroll to bottom only when new messages arrive, not on page load
@@ -103,34 +114,32 @@ export default function ChatPage() {
     const prevMessageCount = useRef(0);
 
     useEffect(() => {
-        // Only scroll if message count changed (new message added)
-        if (messages.length !== prevMessageCount.current) {
+        // Scroll when messages load or update
+        if (messages.length > 0) {
             if (isFirstLoad.current) {
                 isFirstLoad.current = false;
-                // On first load, scroll without animation
-                messagesEndRef.current?.scrollIntoView({ block: 'nearest' });
-            } else {
-                scrollToBottom();
+                // Instant scroll on first load
+                scrollToBottom('auto');
+            } else if (messages.length > prevMessageCount.current) {
+                // Smooth scroll on new message
+                scrollToBottom('smooth');
             }
             prevMessageCount.current = messages.length;
         }
-    }, [messages.length]); // Only depend on length, not entire messages array
+    }, [messages.length]);
 
-    // Fetch conversation details
+    // Subscribe to conversation details (real-time for block status)
     useEffect(() => {
-        const fetchConversation = async () => {
-            const docRef = doc(db, 'conversations', conversationId);
-            const docSnap = await getDoc(docRef);
-
+        const unsubscribe = onSnapshot(doc(db, 'conversations', conversationId), (docSnap) => {
             if (docSnap.exists()) {
                 const convData = { id: docSnap.id, ...docSnap.data() } as Conversation;
                 setConversation(convData);
                 setIsMuted(convData.mutedBy?.includes(user?.uid || '') || false);
             }
             setLoading(false);
-        };
+        });
 
-        fetchConversation();
+        return () => unsubscribe();
     }, [conversationId, user]);
 
     // Subscribe to messages
@@ -780,7 +789,7 @@ export default function ChatPage() {
                                 </p>
                             ) : otherUserStatus instanceof Date ? (
                                 <p className="text-xs text-gray-400">
-                                    נראה לאחרונה {formatDistanceToNow(otherUserStatus, { addSuffix: false, locale: he })}
+                                    נראה לאחרונה {formatLastSeen(otherUserStatus)}
                                 </p>
                             ) : (
                                 <p className="text-xs text-gray-500">לא מחובר</p>
@@ -1165,27 +1174,22 @@ export default function ChatPage() {
                                         }
                                     }}
                                     value={newMessage}
-                                    onChange={(e) => {
-                                        setNewMessage(e.target.value);
-                                        e.target.style.height = 'auto';
-                                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                                    onInput={(e) => {
+                                        setNewMessage(e.currentTarget.value);
+                                        const target = e.currentTarget;
+                                        target.style.height = 'auto';
+                                        target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();
-                                            // Handle manual form submission
-                                            const event = new Event('submit', { cancelable: true }) as unknown as React.FormEvent;
-                                            handleSendMessage(event);
+                                            if (newMessage.trim()) handleSendMessage(e);
                                         }
                                     }}
-                                    onClick={() => {
-                                        window.scrollTo(0, document.body.scrollHeight);
-                                    }}
-                                    placeholder={isRecording ? "מקליט..." : "הודעה..."}
-                                    className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none overflow-y-auto leading-relaxed scrollbar-hide align-middle"
-                                    disabled={isRecording}
+                                    placeholder={isBlockedByMe ? "ביטול חסימה כדי לשלוח הודעה" : (isRecording ? "מקליט..." : "הודעה...")}
+                                    className="w-full bg-transparent text-white placeholder-gray-500 text-sm max-h-32 min-h-[24px] resize-none focus:outline-none !ring-0 !border-0 py-2 scrollbar-hide px-2 disabled:opacity-50"
+                                    dir="rtl"
                                     rows={1}
-                                    dir="auto"
                                     style={{ maxHeight: '120px' }}
                                 />
                             </div>
@@ -1214,8 +1218,8 @@ export default function ChatPage() {
                                 className={`w-10 h-10 mb-1 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isRecording
                                     ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
                                     : (newMessage.trim() || selectedFile ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white')
-                                    }`}
-                                disabled={sending}
+                                    } ${isBlockedByMe ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                disabled={sending || isBlockedByMe}
                             >
                                 {newMessage.trim() || selectedFile ? (
                                     (sending || uploadingImage) ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />

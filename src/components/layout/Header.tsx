@@ -1,15 +1,40 @@
 'use client';
 
 import Link from 'next/link';
-import { Search, Bell, User, Settings, LogIn, MessageCircle } from 'lucide-react';
+import { Search, Bell, User, Settings, LogIn, MessageCircle, Shield, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { AppLogo } from '@/components/ui/AppLogo';
 
 export function Header() {
     const { user, loading: authLoading } = useAuth();
     const [unreadCount, setUnreadCount] = useState(0);
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    // Check if user is admin
+    useEffect(() => {
+        if (!user) {
+            setIsAdmin(false);
+            return;
+        }
+
+        const checkAdmin = async () => {
+            try {
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                if (userDoc.exists()) {
+                    const data = userDoc.data();
+                    const role = data.role;
+                    setIsAdmin(role === 'super_admin' || role === 'admin' || role === 'moderator');
+                }
+            } catch (error) {
+                console.error('Error checking admin status:', error);
+            }
+        };
+
+        checkAdmin();
+    }, [user]);
 
     // Listen for unread notifications
     useEffect(() => {
@@ -35,8 +60,8 @@ export function Header() {
         <header className="sticky top-0 z-40 w-full border-b border-indigo-500/30 bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 shadow-lg">
             <div className="container flex h-14 md:h-16 items-center justify-between px-4 md:px-6 mx-auto max-w-6xl">
                 {/* Logo */}
-                <Link href="/" className="flex items-center gap-2 font-bold text-xl text-white hover:opacity-80 transition-opacity active:scale-95">
-                    🌺 <span className="hidden md:inline">אלונית</span>
+                <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95">
+                    <AppLogo className="h-10 w-auto" />
                 </Link>
 
                 {/* Search Bar */}
@@ -66,6 +91,20 @@ export function Header() {
                         </div>
                     ) : user ? (
                         <>
+                            {/* Progress Link - for all logged in users */}
+                            <Link href="/progress" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10 active:scale-95" title="ההתקדמות שלי">
+                                <TrendingUp size={18} />
+                                <span className="hidden lg:inline">התקדמות</span>
+                            </Link>
+
+                            {/* Admin Link - only for admins */}
+                            {isAdmin && (
+                                <Link href="/admin" className="flex items-center gap-1.5 text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors px-3 py-2 rounded-full hover:bg-amber-500/10 active:scale-95" title="פאנל ניהול">
+                                    <Shield size={18} />
+                                    <span className="hidden lg:inline">ניהול</span>
+                                </Link>
+                            )}
+
                             <Link href="/conversations" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10 active:scale-95">
                                 <MessageCircle size={18} />
                                 צ'אטים

@@ -59,6 +59,8 @@ export function MobileNav() {
         { href: '/ask', icon: PlusCircle, label: 'שאל', isMain: true },
         { href: '/notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
         { href: '/user/me', icon: User, label: 'פרופיל' },
+        // Add Admin Link for admins
+        ...(user && (user.email === 'eyceyceyc139@gmail.com') ? [{ href: '/admin', icon: User, label: 'ניהול' }] : []),
     ] : [
         { href: '/', icon: Home, label: 'ראשי' },
         { href: '/ask', icon: PlusCircle, label: 'שאל', isMain: true },

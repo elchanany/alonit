@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, Send, Edit2, MoreVertical, X } from 'lucide-react';
+import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, Send, Edit2, MoreVertical, X, ShieldAlert } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, increment, collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { getUserProfile } from '@/services/user-level.service';
+import { UserProfile, UserRole, UserLevel, LEVEL_PERMISSIONS } from '@/types/user-levels';
+import { logDeleteQuestion, logDeleteAnswer, logEditQuestion, logEditAnswer, logBlockUser } from '@/services/admin-actions.service';
 
 interface QuestionCardProps {
     id: string;
@@ -52,7 +55,7 @@ export function QuestionCard({
     trustLevel,
     onDelete
 }: QuestionCardProps) {
-    const { user } = useAuth();
+    const { user, userProfile: currentUserProfile } = useAuth();
     const { showToast } = useToast();
 
     const [liked, setLiked] = useState(false);
@@ -67,6 +70,23 @@ export function QuestionCard({
     const [replyingTo, setReplyingTo] = useState<Answer | null>(null);
     const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
     const [dislikedAnswers, setDislikedAnswers] = useState<Set<string>>(new Set());
+
+    // Admin State
+    const [showAdminModal, setShowAdminModal] = useState(false);
+    const [adminAction, setAdminAction] = useState<{ type: 'DELETE_QUESTION' | 'DELETE_ANSWER' | 'BLOCK_USER' | 'EDIT_QUESTION' | 'EDIT_ANSWER'; targetId: string; targetName?: string; targetData?: any } | null>(null);
+
+    // Permission Logic
+    const levelPermissions = currentUserProfile ? LEVEL_PERMISSIONS[currentUserProfile.level] : null;
+
+    // Admin = has Role OR has specific Level permissions (Oak)
+    const isAdmin =
+        currentUserProfile?.role === UserRole.ADMIN ||
+        currentUserProfile?.role === UserRole.SUPER_ADMIN ||
+        currentUserProfile?.role === UserRole.MODERATOR ||
+        levelPermissions?.canModerateContent ||
+        levelPermissions?.canDeletePosts;
+
+    const isSuperAdmin = currentUserProfile?.role === UserRole.SUPER_ADMIN;
 
     useEffect(() => {
         const fetchAnswers = async () => {
@@ -140,7 +160,7 @@ export function QuestionCard({
             return;
         }
 
-        // If was liked, remove like first
+        // If was liked, remove dislike first
         if (liked) {
             setLiked(false);
             setLocalFlowerCount(prev => Math.max(0, prev - 1));
@@ -176,18 +196,13 @@ export function QuestionCard({
         return (Date.now() - created.getTime()) / (1000 * 60 * 60);
     };
 
-    const canDeleteQuestion = user?.uid === authorId && getHoursSinceCreation() <= 2;
-    const canEditQuestion = user?.uid === authorId && getHoursSinceCreation() <= 24;
+    const isOwner = user?.uid === authorId;
 
-    const handleDeleteQuestion = async () => {
-        if (!user || user.uid !== authorId) {
-            showToast('אין לך הרשאה למחוק', 'error');
-            return;
-        }
-        if (getHoursSinceCreation() > 2) {
-            showToast('ניתן למחוק שאלה רק עד שעתיים אחרי פרסום', 'error');
-            return;
-        }
+    // Permission checks
+    const canDeleteQuestion = (isOwner && getHoursSinceCreation() <= 2) || (levelPermissions?.canDeletePosts ?? false) || isAdmin;
+    const canEditQuestion = (isOwner && getHoursSinceCreation() <= 24) || (levelPermissions?.canEditAnyPost ?? false) || isAdmin;
+
+    const executeDeleteQuestion = async (reason?: string) => {
         try {
             // First, delete all answers
             const answersRef = collection(db, 'questions', id, 'answers');
@@ -202,11 +217,46 @@ export function QuestionCard({
             // Then delete the question itself
             await deleteDoc(doc(db, 'questions', id));
 
+            // Log if admin
+            if (isAdmin && user && currentUserProfile && reason) {
+                await logDeleteQuestion(
+                    { uid: user.uid, displayName: currentUserProfile.displayName, email: currentUserProfile.email },
+                    { uid: authorId || 'unknown', displayName: authorName, email: 'unknown' }, // We don't have author email easily here without fetching, but that's okay for now
+                    reason,
+                    id,
+                    title
+                );
+            }
+
             showToast('השאלה נמחקה', 'success');
             if (onDelete) onDelete();
         } catch (error) {
             console.error('Error deleting question:', error);
             showToast('שגיאה במחיקת השאלה', 'error');
+        }
+    };
+
+    const handleDeleteQuestion = async () => {
+        if (!user) return;
+
+        if (isAdmin && !isOwner) {
+            setAdminAction({ type: 'DELETE_QUESTION', targetId: id, targetName: authorName });
+            setShowAdminModal(true);
+            return;
+        }
+
+        if (!isOwner) {
+            showToast('אין לך הרשאה למחוק', 'error');
+            return;
+        }
+
+        if (getHoursSinceCreation() > 2 && !isAdmin) {
+            showToast('ניתן למחוק שאלה רק עד שעתיים אחרי פרסום', 'error');
+            return;
+        }
+
+        if (confirm('האם אתה בטוח שברצונך למחוק את השאלה?')) {
+            executeDeleteQuestion();
         }
     };
 
@@ -218,15 +268,29 @@ export function QuestionCard({
     const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
     const [editAnswerContent, setEditAnswerContent] = useState('');
 
-    const handleEditAnswer = async (answerId: string) => {
-        if (!user) return;
+    const executeEditAnswer = async (answerId: string, newContent: string, reason?: string) => {
         try {
             await updateDoc(doc(db, 'questions', id, 'answers', answerId), {
-                content: editAnswerContent,
+                content: newContent,
                 editedAt: serverTimestamp()
             });
+
+            // Find old answer content for logging (optional, could be passed in)
+            const oldAnswer = answers.find(a => a.id === answerId);
+
+            if (isAdmin && user && currentUserProfile && reason && oldAnswer) {
+                await logEditAnswer(
+                    { uid: user.uid, displayName: currentUserProfile.displayName, email: currentUserProfile.email },
+                    { uid: oldAnswer.authorId, displayName: oldAnswer.authorName, email: 'unknown' },
+                    reason,
+                    answerId,
+                    oldAnswer.content,
+                    newContent
+                );
+            }
+
             setAnswers(prev => prev.map(a =>
-                a.id === answerId ? { ...a, content: editAnswerContent } : a
+                a.id === answerId ? { ...a, content: newContent } : a
             ));
             setEditingAnswerId(null);
             setEditAnswerContent('');
@@ -236,26 +300,86 @@ export function QuestionCard({
         }
     };
 
-    const handleEditQuestion = async () => {
-        if (!user || user.uid !== authorId) {
-            showToast('אין לך הרשאה לערוך', 'error');
+    const handleEditAnswer = async (answerId: string) => {
+        if (!user) return;
+
+        const answer = answers.find(a => a.id === answerId);
+        if (!answer) return;
+
+        const isAnswerOwner = user.uid === answer.authorId;
+
+        // Admin logic
+        if (isAdmin && !isAnswerOwner) {
+            setAdminAction({
+                type: 'EDIT_ANSWER',
+                targetId: answerId,
+                targetName: answer.authorName,
+                targetData: { content: editAnswerContent } // passing the NEW content
+            });
+            setShowAdminModal(true);
             return;
         }
-        if (getHoursSinceCreation() > 24) {
-            showToast('ניתן לערוך שאלה רק עד 24 שעות אחרי פרסום', 'error');
-            return;
+
+        // Standard user logic
+        if (isAnswerOwner) {
+            executeEditAnswer(answerId, editAnswerContent);
         }
+    };
+
+    const executeEditQuestion = async (reason?: string) => {
         try {
             await updateDoc(doc(db, 'questions', id), {
                 title: editTitle,
                 content: editContent,
                 editedAt: serverTimestamp()
             });
+
+            if (isAdmin && user && currentUserProfile && reason) {
+                await logEditQuestion(
+                    { uid: user.uid, displayName: currentUserProfile.displayName, email: currentUserProfile.email },
+                    { uid: authorId || 'unknown', displayName: authorName, email: 'unknown' },
+                    reason,
+                    id,
+                    title, // old title
+                    editTitle // new title
+                );
+            }
+
             showToast('השאלה עודכנה', 'success');
             setIsEditing(false);
         } catch (error) {
             showToast('שגיאה בעריכת השאלה', 'error');
         }
+    };
+
+    const handleEditQuestion = async () => {
+        if (!user) return;
+
+        if (!canEditQuestion) {
+            showToast('אין לך הרשאה לערוך', 'error');
+            return;
+        }
+
+        const timeLimitExceeded = getHoursSinceCreation() > 24;
+
+        // Admin override logic: If admin is editing someone else's post OR time limit exceeded
+        if (isAdmin && (!isOwner || timeLimitExceeded)) {
+            setAdminAction({
+                type: 'EDIT_QUESTION',
+                targetId: id,
+                targetName: authorName,
+                targetData: { oldTitle: title, newTitle: editTitle }
+            });
+            setShowAdminModal(true);
+            return;
+        }
+
+        if (timeLimitExceeded && !isAdmin) {
+            showToast('ניתן לערוך שאלה רק עד 24 שעות אחרי פרסום', 'error');
+            return;
+        }
+
+        executeEditQuestion();
     };
 
     const fetchAllAnswers = async () => {
@@ -332,15 +456,48 @@ export function QuestionCard({
         setSubmitting(false);
     };
 
-    const handleDeleteAnswer = async (answerId: string) => {
-        if (!user) return;
+    const executeDeleteAnswer = async (answerId: string, authorId: string, authorName: string, content: string, reason?: string) => {
         try {
             await deleteDoc(doc(db, 'questions', id, 'answers', answerId));
             await updateDoc(doc(db, 'questions', id), { answerCount: increment(-1) });
             setAnswers(prev => prev.filter(a => a.id !== answerId));
+
+            if (isAdmin && user && currentUserProfile && reason) {
+                await logDeleteAnswer(
+                    { uid: user.uid, displayName: currentUserProfile.displayName, email: currentUserProfile.email },
+                    { uid: authorId, displayName: authorName, email: 'unknown' },
+                    reason,
+                    answerId,
+                    content.substring(0, 50) + (content.length > 50 ? '...' : '')
+                );
+            }
+
             showToast('התשובה נמחקה', 'success');
         } catch (error) {
             showToast('שגיאה במחיקה', 'error');
+        }
+    };
+
+    const handleDeleteAnswer = async (answerId: string, authorId: string, authorName: string, content: string) => {
+        if (!user) return;
+
+        const isAnswerOwner = user.uid === authorId;
+
+        if (isAdmin && !isAnswerOwner) {
+            setAdminAction({
+                type: 'DELETE_ANSWER',
+                targetId: answerId,
+                targetName: authorName,
+                targetData: { authorId, authorName, content }
+            });
+            setShowAdminModal(true);
+            return;
+        }
+
+        if (isAnswerOwner) {
+            if (confirm('האם למחוק את התשובה?')) {
+                executeDeleteAnswer(answerId, authorId, authorName, content);
+            }
         }
     };
 
@@ -517,7 +674,7 @@ export function QuestionCard({
                     )}
 
                     {/* Author Actions Menu */}
-                    {user?.uid === authorId && (
+                    {(user?.uid === authorId || isAdmin) && (
                         <div className="flex items-center gap-2">
                             {canEditQuestion && (
                                 <button
@@ -774,7 +931,7 @@ export function QuestionCard({
                                                 <span>ערוך</span>
                                             </button>
                                             <button
-                                                onClick={() => handleDeleteAnswer(ans.id)}
+                                                onClick={() => handleDeleteAnswer(ans.id, ans.authorId, ans.authorName, ans.content)}
                                                 className="flex items-center gap-1 text-gray-500 hover:text-red-400 transition-colors"
                                             >
                                                 <Trash2 size={14} />
@@ -827,6 +984,100 @@ export function QuestionCard({
                     {/* End of answers wrapper */}
                 </div>
 
+                {/* Admin Action Modal */}
+                {showAdminModal && adminAction && (
+                    <AdminActionModal
+                        title={
+                            adminAction.type === 'DELETE_QUESTION' ? 'מחיקת שאלה' :
+                                adminAction.type === 'DELETE_ANSWER' ? 'מחיקת תשובה' :
+                                    adminAction.type === 'EDIT_QUESTION' ? 'עריכת שאלה' :
+                                        'עריכת תשובה'
+                        }
+                        description={`אתה עומד ${adminAction.type.includes('DELETE') ? 'למחוק' : 'לערוך'} את ${adminAction.type.includes('QUESTION') ? 'השאלה של' : 'התשובה של'} ${adminAction.targetName}. פעולה זו תירשם בלוג.`}
+                        confirmLabel={adminAction.type.includes('DELETE') ? 'מחק תוכן' : 'שמור שינויים'}
+                        variant={adminAction.type.includes('DELETE') ? 'danger' : 'info'}
+                        onConfirm={(reason) => {
+                            if (adminAction.type === 'DELETE_QUESTION') {
+                                executeDeleteQuestion(reason);
+                            } else if (adminAction.type === 'DELETE_ANSWER' && adminAction.targetData) {
+                                executeDeleteAnswer(
+                                    adminAction.targetId,
+                                    adminAction.targetData.authorId,
+                                    adminAction.targetData.authorName,
+                                    adminAction.targetData.content,
+                                    reason
+                                );
+                            } else if (adminAction.type === 'EDIT_QUESTION') {
+                                executeEditQuestion(reason);
+                            } else if (adminAction.type === 'EDIT_ANSWER' && adminAction.targetData) {
+                                executeEditAnswer(adminAction.targetId, adminAction.targetData.content, reason);
+                            }
+                            setShowAdminModal(false);
+                            setAdminAction(null);
+                        }}
+                        onClose={() => {
+                            setShowAdminModal(false);
+                            setAdminAction(null);
+                        }}
+                    />
+                )}
+            </div>
+        </div>
+    );
+}
+
+function AdminActionModal({ title, description, confirmLabel = 'אישור', variant = 'danger', onConfirm, onClose }: {
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'info';
+    onConfirm: (reason: string) => void;
+    onClose: () => void;
+}) {
+    const [reason, setReason] = useState('');
+
+    const isDanger = variant === 'danger';
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className={`bg-gray-900 border ${isDanger ? 'border-red-500/50' : 'border-indigo-500/50'} rounded-2xl w-full max-w-md p-6 shadow-2xl`}>
+                <div className={`flex items-center gap-3 ${isDanger ? 'text-red-500' : 'text-indigo-400'} mb-4`}>
+                    <ShieldAlert size={32} />
+                    <h3 className="text-xl font-bold">{title}</h3>
+                </div>
+
+                <p className="text-gray-300 mb-6">{description}</p>
+
+                <div className="mb-6">
+                    <label className="block text-sm font-bold text-gray-400 mb-2">
+                        {isDanger ? 'סיבת המחיקה (חובה):' : 'סיבת העריכה (חובה):'}
+                    </label>
+                    <textarea
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        className={`w-full bg-gray-800 border ${isDanger ? 'border-gray-700 focus:border-red-500' : 'border-gray-700 focus:border-indigo-500'} text-white rounded-xl px-4 py-3 min-h-[100px] focus:outline-none`}
+                        placeholder={isDanger ? "פרט למה התוכן נמחק..." : "פרט למה התוכן נערך..."}
+                    />
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => reason.trim() && onConfirm(reason)}
+                        disabled={!reason.trim()}
+                        className={`flex-1 text-white font-bold py-3 rounded-xl disabled:opacity-50 transition-all ${isDanger
+                            ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500'
+                            : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'
+                            }`}
+                    >
+                        {confirmLabel}
+                    </button>
+                    <button
+                        onClick={onClose}
+                        className="flex-1 bg-gray-800 text-gray-300 font-bold py-3 rounded-xl hover:bg-gray-700 transition-all"
+                    >
+                        ביטול
+                    </button>
+                </div>
             </div>
         </div>
     );
