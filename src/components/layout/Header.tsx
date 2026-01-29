@@ -60,8 +60,11 @@ export function Header() {
         <header className="sticky top-0 z-40 w-full border-b border-indigo-500/30 bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 shadow-lg">
             <div className="container flex h-14 md:h-16 items-center justify-between px-4 md:px-6 mx-auto max-w-6xl">
                 {/* Logo */}
-                <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95">
-                    <AppLogo className="h-10 w-auto" />
+                <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity active:scale-95 group">
+                    <AppLogo className="h-12 w-auto" showText={false} />
+                    <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-200 hidden md:block group-hover:from-indigo-200 group-hover:to-white transition-all">
+                        אלונית
+                    </span>
                 </Link>
 
                 {/* Search Bar */}

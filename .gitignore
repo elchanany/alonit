@@ -4,6 +4,7 @@ build/
 dist/
 .env
 .env.local
+*firebase-adminsdk*.json
 .DS_Store
 .vscode/
 

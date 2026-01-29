@@ -15,6 +15,7 @@ import { logBlockUser, logUnblockUser, logPromoteUser, getAdminActionsLog } from
 import { AdminActionLog, ACTION_LABELS } from '@/types/admin-actions';
 import { useAuth } from '@/context/AuthContext';
 import { fixUserProfile } from '@/services/fix-profile.service';
+import { auth } from '@/lib/firebase';
 
 export default function AdminPanel() {
     const { user, userProfile: currentUserProfile } = useAuth();
@@ -30,6 +31,7 @@ export default function AdminPanel() {
     const [answersCount, setAnswersCount] = useState(0);
     const [recentUsers, setRecentUsers] = useState<UserProfile[]>([]);
     const [fixingProfiles, setFixingProfiles] = useState(false);
+    const [syncingUsers, setSyncingUsers] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -84,8 +86,15 @@ export default function AdminPanel() {
         let errors: string[] = [];
 
         try {
-            // Filter users who are missing level, role, OR display name (or have empty display name)
-            const brokenProfiles = users.filter(u => !u.level || !u.role || !u.displayName || u.displayName.trim() === '');
+            // Filter users who are missing level, role, display name, OR have placeholder name
+            const brokenProfiles = users.filter(u =>
+                !u.level ||
+                !u.role ||
+                !u.displayName ||
+                u.displayName.trim() === '' ||
+                u.displayName === 'משתמש ללא מייל' ||
+                (!u.email && u.displayName)  // Has name but no email
+            );
 
             for (const profile of brokenProfiles) {
                 try {
@@ -110,6 +119,43 @@ export default function AdminPanel() {
             alert('שגיאה קריטית בתהליך התיקון: ' + error.message);
         } finally {
             setFixingProfiles(false);
+        }
+    }
+
+    async function handleSyncUsers() {
+        if (!confirm('האם לסנכרן את כל המשתמשים מ-Firebase Authentication?')) return;
+        setSyncingUsers(true);
+
+        try {
+            // Get current user's token
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) {
+                alert('שגיאה: לא מחובר');
+                return;
+            }
+
+            const response = await fetch('/api/sync-users', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'שגיאה בסנכרון');
+            }
+
+            alert(`סנכרון הושלם!\n\nמשתמשים ב-Auth: ${result.authUsersCount}\nמשתמשים ב-Firestore: ${result.firestoreUsersCount}\nנוצרו: ${result.created}\nעודכנו: ${result.updated}`);
+
+            await loadData();
+        } catch (error: any) {
+            console.error('Sync error:', error);
+            alert('שגיאה בסנכרון: ' + error.message + '\n\nייתכן שצריך להגדיר Firebase Admin SDK credentials.');
+        } finally {
+            setSyncingUsers(false);
         }
     }
 
@@ -232,6 +278,13 @@ export default function AdminPanel() {
                             )}
                         </div>
                         <div className="text-left flex items-center gap-4">
+                            <button
+                                onClick={handleSyncUsers}
+                                disabled={syncingUsers}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50"
+                            >
+                                {syncingUsers ? '⏳ מסנכרן...' : '🔄 סנכרן משתמשים'}
+                            </button>
                             {brokenProfilesCount > 0 && (
                                 <button
                                     onClick={handleFixAllProfiles}

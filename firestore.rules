@@ -44,10 +44,32 @@ service cloud.firestore {
     
     // Notifications
     match /notifications/{notificationId} {
-        allow create: if isAdmin();
-        allow read: if isAuth() && request.auth.uid == resource.data.recipientUid;
-        allow update: if isAuth() && request.auth.uid == resource.data.recipientUid; // For marking as read
-        allow delete: if isAuth() && request.auth.uid == resource.data.recipientUid;
+        allow create: if isAuth(); // Allow any authenticated user to create notifications
+        allow read: if isAuth() && (request.auth.uid == resource.data.recipientUid || request.auth.uid == resource.data.recipientId);
+        allow update: if isAuth() && (request.auth.uid == resource.data.recipientUid || request.auth.uid == resource.data.recipientId);
+        allow delete: if isAuth() && (request.auth.uid == resource.data.recipientUid || request.auth.uid == resource.data.recipientId);
+    }
+    
+    // Conversations (Chat)
+    match /conversations/{convId} {
+        allow read: if isAuth() && request.auth.uid in resource.data.participants;
+        allow create: if isAuth();
+        allow update: if isAuth() && request.auth.uid in resource.data.participants;
+        allow delete: if isAdmin();
+        
+        // Messages subcollection
+        match /messages/{messageId} {
+            allow read: if isAuth();
+            allow create: if isAuth();
+            allow update: if isAuth() && request.auth.uid == resource.data.senderId;
+            allow delete: if isAuth() && (request.auth.uid == resource.data.senderId || isAdmin());
+        }
+    }
+    
+    // Reports
+    match /reports/{reportId} {
+        allow create: if isAuth();
+        allow read: if isAdmin();
     }
   }
 }

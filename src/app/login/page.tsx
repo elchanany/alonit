@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { AppLogo } from '@/components/ui/AppLogo';
 
 export default function LoginPage() {
     const { signInWithGoogle, signInWithEmail, signUpWithEmail, user } = useAuth();
@@ -48,7 +49,9 @@ export default function LoginPage() {
                 {/* Card */}
                 <div className="bg-gray-900/80 backdrop-blur-md border border-indigo-500/30 rounded-2xl shadow-2xl p-8">
                     <div className="text-center mb-8">
-                        <div className="text-4xl mb-2">🌺</div>
+                        <div className="flex justify-center mb-4">
+                            <AppLogo className="w-16 h-16" showText={false} />
+                        </div>
                         <h1 className="text-2xl font-bold text-white">
                             {isSignUp ? 'הרשמה לאלונית' : 'התחברות לאלונית'}
                         </h1>

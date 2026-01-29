@@ -133,8 +133,8 @@ function MyComponent() {
   return (
     <div>
       {LevelUpNotification}
-      {/* ... שאר הקומפוננט */}
-</div>
+      // ...rest of component
+    </div>
   );
 }
 

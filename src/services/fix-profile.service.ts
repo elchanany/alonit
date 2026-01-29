@@ -2,8 +2,6 @@ import { db } from '@/lib/firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { UserLevel, UserRole } from '@/types/user-levels';
 
-const SUPER_ADMIN_EMAIL = 'eyc139@gmail.com';
-
 /**
  * תיקון פרופיל קיים שחסרים בו שדות
  */
