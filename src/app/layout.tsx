@@ -12,6 +12,10 @@ export const metadata: Metadata = {
     title: "Alonit",
     description: "A modern Q&A platform for Israeli youth",
     manifest: "/manifest.json",
+    icons: {
+        icon: "/icon.svg",
+        apple: "/icon.svg",
+    },
 };
 
 export const viewport: Viewport = {
