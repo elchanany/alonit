@@ -134,6 +134,28 @@ export function toRelativeTime(date: Date): string {
 }
 
 /**
+ * המרת תאריך לפורמט חכם ("לפני X זמן בשעה HH:MM")
+ * @param date תאריך JavaScript
+ * @returns מחרוזת בפורמט חכם
+ */
+export function toSmartDate(date: Date): string {
+    const relative = toRelativeTime(date);
+    const time = date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+
+    // אם עבר פחות מיום, נציג רק את הזמן היחסי או "היום ב-XX:XX"
+    const now = new Date();
+    const isToday = date.getDate() === now.getDate() &&
+        date.getMonth() === now.getMonth() &&
+        date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+        return `${relative} (${time})`;
+    }
+
+    return `${relative} בשעה ${time}`;
+}
+
+/**
  * יצירת אובייקט עם כל פורמטי התאריכים
  */
 export function getAllDateFormats(date: Date): {

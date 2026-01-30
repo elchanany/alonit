@@ -1,0 +1,23 @@
+[
+    {
+        "origin": [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "https://alonit.co.il",
+            "https://www.alonit.co.il"
+        ],
+        "method": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "HEAD"
+        ],
+        "maxAgeSeconds": 3600,
+        "responseHeader": [
+            "Content-Type",
+            "Access-Control-Allow-Origin",
+            "x-goog-resumable"
+        ]
+    }
+]

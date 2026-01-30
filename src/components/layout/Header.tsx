@@ -1,15 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { Search, Bell, User, Settings, LogIn, MessageCircle, Shield, TrendingUp } from 'lucide-react';
+import { Search, Bell, Settings, LogIn, MessageCircle, Shield, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { AppLogo } from '@/components/ui/AppLogo';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export function Header() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, userProfile, loading: authLoading } = useAuth();
     const [unreadCount, setUnreadCount] = useState(0);
     const [isAdmin, setIsAdmin] = useState(false);
 
@@ -123,8 +124,8 @@ export function Header() {
                             <Link href="/settings" className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95" title="הגדרות">
                                 <Settings size={20} />
                             </Link>
-                            <Link href="/user/me" className="ml-2 p-1 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-full border border-gray-700 hover:border-indigo-400 transition-colors active:scale-95">
-                                <User size={20} className="text-white" />
+                            <Link href="/user/me" className="ml-2 p-0.5 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-full border border-gray-700 hover:border-indigo-400 transition-colors active:scale-95">
+                                <UserAvatar user={userProfile} size="sm" />
                             </Link>
                         </>
                     ) : (

@@ -287,3 +287,62 @@ export function getProgressToNextLevel(stats: UserStats, currentLevel: UserLevel
     const avgProgress = progressMetrics.reduce((sum, val) => sum + val, 0) / progressMetrics.length;
     return Math.min(100, Math.round(avgProgress * 100));
 }
+
+// בדיקת זמינות שם משתמש
+export async function checkUsernameAvailability(username: string, currentUid?: string): Promise<{ available: boolean; suggestions?: string[] }> {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('username', '==', username.toLowerCase().trim()));
+    const snapshot = await getDocs(q);
+
+    // אם נמצא משתמש עם השם הזה (ולא המשתמש הנוכחי)
+    const isOwnUsername = snapshot.docs.length === 1 && snapshot.docs[0].id === currentUid;
+    const available = snapshot.empty || isOwnUsername;
+
+    if (!available) {
+        // יצירת הצעות חלופיות
+        const suggestions: string[] = [];
+        for (let i = 1; i <= 3; i++) {
+            const suggestion = `${username}${Math.floor(Math.random() * 1000)}`;
+            suggestions.push(suggestion);
+        }
+        return { available: false, suggestions };
+    }
+
+    return { available: true };
+}
+
+// השלמת פרופיל משתמש (Onboarding)
+export async function completeUserProfile(
+    uid: string,
+    data: {
+        username: string;
+        birthDate: string;
+        gender: 'male' | 'female';
+        photoURL?: string;
+        googleName?: string;
+    }
+): Promise<void> {
+    const docRef = doc(db, 'users', uid);
+
+    // Calculate Age
+    const birth = new Date(data.birthDate);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+        age--;
+    }
+
+    await updateDoc(docRef, {
+        username: data.username.toLowerCase().trim(),
+        displayName: data.username.trim(), // Public display name is the username
+        googleName: data.googleName || null, // Private real name
+        birthDate: data.birthDate,
+        age: age,
+        gender: data.gender,
+        photoURL: data.photoURL || null,
+        isProfileCompleted: true,
+        lastActive: serverTimestamp()
+    });
+}
+

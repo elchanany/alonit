@@ -22,11 +22,13 @@ interface AuthContextType {
     userProfile: UserProfile | null;
     loading: boolean;
     isVerified: boolean;
+    needsOnboarding: boolean;
     signInWithGoogle: () => Promise<void>;
     signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
     signUpWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
     resendVerification: () => Promise<void>;
     signOut: () => Promise<void>;
+    refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -34,11 +36,13 @@ const AuthContext = createContext<AuthContextType>({
     userProfile: null,
     loading: true,
     isVerified: false,
+    needsOnboarding: false,
     signInWithGoogle: async () => { },
     signInWithEmail: async () => ({}),
     signUpWithEmail: async () => ({}),
     resendVerification: async () => { },
     signOut: async () => { },
+    refreshProfile: async () => { },
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -237,8 +241,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    const refreshProfile = async () => {
+        if (user) {
+            const profile = await getUserProfile(user.uid);
+            setUserProfile(profile);
+        }
+    };
+
+    // Check if user needs to complete onboarding
+    const needsOnboarding = Boolean(
+        user &&
+        userProfile &&
+        !userProfile.isProfileCompleted
+    );
+
     return (
-        <AuthContext.Provider value={{ user, userProfile, loading, isVerified, signInWithGoogle, signInWithEmail, signUpWithEmail, resendVerification, signOut }}>
+        <AuthContext.Provider value={{ user, userProfile, loading, isVerified, needsOnboarding, signInWithGoogle, signInWithEmail, signUpWithEmail, resendVerification, signOut, refreshProfile }}>
             {children}
         </AuthContext.Provider>
     );

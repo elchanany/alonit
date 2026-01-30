@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "cloudinary": "^2.8.0",
+    "cloudinary": "^2.9.0",
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
     "emoji-picker-react": "^4.16.1",

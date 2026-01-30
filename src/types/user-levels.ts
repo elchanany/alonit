@@ -57,6 +57,14 @@ export interface UserProfile {
     blockedReason?: string;
     promotedBy?: string;  // UID של מי שקידם
     promotedAt?: Date;
+
+    // שדות פרופיל מורחב
+    birthDate?: string; // ISO date string (YYYY-MM-DD)
+    age?: number; // Calculated from birthDate
+    gender?: 'male' | 'female'; // Removed 'other'
+    username?: string; // Public handle
+    googleName?: string; // Private real name from Google
+    isProfileCompleted?: boolean;
 }
 
 // דרישות לכל רמה

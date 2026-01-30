@@ -11,6 +11,7 @@ import { he } from 'date-fns/locale';
 import { useToast } from '@/context/ToastContext';
 import AudioPlayer from '@/components/chat/AudioPlayer';
 import { EmojiStickerPicker } from '@/components/ui/EmojiStickerPicker';
+import { getUserProfile } from '@/services/user-level.service';
 
 interface Message {
     id: string;
@@ -101,6 +102,9 @@ export default function ChatPage() {
     // Online status state
     const [otherUserStatus, setOtherUserStatus] = useState<'online' | Date | null>(null);
 
+    // Live profile for other user (real-time name/photo updates)
+    const [otherUserProfile, setOtherUserProfile] = useState<{ displayName: string; photoURL?: string } | null>(null);
+
     // Block menu state
     const [showBlockMenu, setShowBlockMenu] = useState(false);
 
@@ -179,7 +183,7 @@ export default function ChatPage() {
         return () => clearInterval(interval);
     }, [user]);
 
-    // Subscribe to other user's online status
+    // Subscribe to other user's online status and profile
     useEffect(() => {
         if (!conversation) return;
         const otherId = conversation.participants.find(p => p !== user?.uid);
@@ -192,6 +196,14 @@ export default function ChatPage() {
                 setOtherUserStatus('online');
             } else {
                 setOtherUserStatus(lastSeen || null);
+            }
+
+            // Update live profile (name and photo)
+            if (data) {
+                setOtherUserProfile({
+                    displayName: data.displayName || data.username || conversation.participantNames[otherId] || 'משתמש',
+                    photoURL: data.photoURL || conversation.participantPhotos?.[otherId]
+                });
             }
         });
 
@@ -746,9 +758,13 @@ export default function ChatPage() {
         );
     }
 
-    const otherParticipantName = conversation
+    const otherParticipantName = otherUserProfile?.displayName || (conversation
         ? Object.entries(conversation.participantNames).find(([id]) => id !== user?.uid)?.[1] || 'משתמש'
-        : 'משתמש';
+        : 'משתמש');
+
+    const otherParticipantPhoto = otherUserProfile?.photoURL || (conversation
+        ? conversation.participantPhotos?.[conversation.participants.find(p => p !== user?.uid) || '']
+        : undefined);
 
     const otherParticipantId = conversation?.participants.find(p => p !== user?.uid);
 
@@ -768,9 +784,13 @@ export default function ChatPage() {
                         {/* Profile with glowing ring */}
                         <div className="relative">
                             <div className={`w-12 h-12 rounded-full p-[2px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ${otherUserStatus === 'online' && !amIBlocked ? 'animate-pulse' : ''}`}>
-                                <div className="w-full h-full rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
-                                    {otherParticipantName[0]}
-                                </div>
+                                {otherParticipantPhoto ? (
+                                    <img src={otherParticipantPhoto} alt="" className="w-full h-full rounded-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                                        {otherParticipantName[0]}
+                                    </div>
+                                )}
                             </div>
                             {/* Online indicator dot - only show when online and not blocked */}
                             {otherUserStatus === 'online' && !amIBlocked && (

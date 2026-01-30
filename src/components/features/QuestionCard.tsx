@@ -10,6 +10,9 @@ import { useToast } from '@/context/ToastContext';
 import { getUserProfile } from '@/services/user-level.service';
 import { UserProfile, UserRole, UserLevel, LEVEL_PERMISSIONS } from '@/types/user-levels';
 import { logDeleteQuestion, logDeleteAnswer, logEditQuestion, logEditAnswer, logBlockUser } from '@/services/admin-actions.service';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+import { LiveAuthorDisplay } from '@/components/ui/LiveAuthorDisplay';
+import { toSmartDate } from '@/utils/hebrewDate';
 
 interface QuestionCardProps {
     id: string;
@@ -33,6 +36,9 @@ interface Answer {
     content: string;
     authorId: string;
     authorName: string;
+    realAuthorId?: string;  // For anonymous answers - actual author ID (admin only)
+    realAuthorName?: string; // For anonymous answers - actual author name (admin only)
+    isAnonymous?: boolean;
     flowerCount: number;
     dislikeCount?: number;
     replyTo?: { authorName: string; content: string };
@@ -70,6 +76,7 @@ export function QuestionCard({
     const [replyingTo, setReplyingTo] = useState<Answer | null>(null);
     const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
     const [dislikedAnswers, setDislikedAnswers] = useState<Set<string>>(new Set());
+    const [isAnonymousAnswer, setIsAnonymousAnswer] = useState(false);
 
     // Admin State
     const [showAdminModal, setShowAdminModal] = useState(false);
@@ -87,6 +94,32 @@ export function QuestionCard({
         levelPermissions?.canDeletePosts;
 
     const isSuperAdmin = currentUserProfile?.role === UserRole.SUPER_ADMIN;
+
+    // Live author profile (for real-time name/photo updates)
+    const [liveAuthorProfile, setLiveAuthorProfile] = useState<{ displayName: string; photoURL?: string } | null>(null);
+
+    // Fetch author's current profile for real-time name/photo
+    useEffect(() => {
+        const fetchAuthorProfile = async () => {
+            if (!authorId || authorName === 'אנונימי') return;
+            try {
+                const profile = await getUserProfile(authorId);
+                if (profile) {
+                    setLiveAuthorProfile({
+                        displayName: profile.displayName || profile.username || authorName,
+                        photoURL: profile.photoURL
+                    });
+                }
+            } catch (err) {
+                // Fallback to stored name/photo
+            }
+        };
+        fetchAuthorProfile();
+    }, [authorId, authorName]);
+
+    // Use live profile if available, otherwise fall back to stored values
+    const displayAuthorName = liveAuthorProfile?.displayName || authorName;
+    const displayAuthorPhoto = liveAuthorProfile?.photoURL || authorPhoto;
 
     useEffect(() => {
         const fetchAnswers = async () => {
@@ -424,8 +457,12 @@ export function QuestionCard({
         try {
             const answerData: any = {
                 content: newAnswer.trim(),
-                authorId: user.uid,
-                authorName: user.displayName || 'משתמש',
+                authorId: isAnonymousAnswer ? 'anonymous' : user.uid,
+                authorName: isAnonymousAnswer ? 'אנונימי' : (user.displayName || 'משתמש'),
+                // Always save real author info for admin access
+                realAuthorId: user.uid,
+                realAuthorName: user.displayName || 'משתמש',
+                isAnonymous: isAnonymousAnswer,
                 flowerCount: 0,
                 dislikeCount: 0,
                 createdAt: serverTimestamp()
@@ -447,6 +484,7 @@ export function QuestionCard({
 
             setNewAnswer('');
             setReplyingTo(null);
+            setIsAnonymousAnswer(false); // Reset anonymous toggle
             fetchAllAnswers();
             showToast('התשובה נשלחה בהצלחה', 'success');
         } catch (error: any) {
@@ -648,23 +686,24 @@ export function QuestionCard({
                 {/* Header: Author & Rank */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <Link href={authorName === 'אנונימי' ? '#' : '/user/' + authorName}>
-                            <div className="w-10 h-10 rounded-full border border-gray-700 p-0.5 overflow-hidden">
-                                {authorPhoto ? (
-                                    <img src={authorPhoto} alt="" className="w-full h-full rounded-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center rounded-full text-gray-400 font-bold">
-                                        {authorName[0]}
-                                    </div>
-                                )}
-                            </div>
+                        <Link href={displayAuthorName === 'אנונימי' ? '#' : '/user/' + (authorId || displayAuthorName)}>
+                            <UserAvatar
+                                src={displayAuthorPhoto}
+                                name={displayAuthorName}
+                                size="md"
+                                className="border border-gray-700"
+                            />
                         </Link>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="font-bold text-sm text-white">{authorName}</span>
+                                <Link href={displayAuthorName === 'אנונימי' ? '#' : '/user/' + (authorId || displayAuthorName)} className="font-bold text-sm text-white hover:text-indigo-400 transition-colors">
+                                    {displayAuthorName}
+                                </Link>
                                 {getRankBadge(trustLevel)}
                             </div>
-                            <span className="text-xs text-gray-500">{timeAgo}</span>
+                            <span className="text-xs text-gray-500">
+                                {createdAt ? toSmartDate(createdAt.toDate ? createdAt.toDate() : new Date(createdAt)) : timeAgo}
+                            </span>
                         </div>
                     </div>
                     {category && (
@@ -797,28 +836,46 @@ export function QuestionCard({
                     {/* Answer Form */}
                     {expanded && (
                         user ? (
-                            <form onSubmit={handleSubmitAnswer} className="mb-4 flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="כתוב תשובה..."
-                                    className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500"
-                                    value={newAnswer}
-                                    onChange={(e) => setNewAnswer(e.target.value)}
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={submitting || !newAnswer.trim()}
-                                    className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 text-white px-4 py-2.5 rounded-full transition-colors flex items-center justify-center gap-2 min-w-[70px]"
-                                >
-                                    {submitting ? (
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    ) : (
-                                        <>
-                                            <Send size={16} />
-                                            <span className="hidden sm:inline">שלח</span>
-                                        </>
-                                    )}
-                                </button>
+                            <form onSubmit={handleSubmitAnswer} className="mb-4 space-y-2">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="כתוב תשובה..."
+                                        className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500"
+                                        value={newAnswer}
+                                        onChange={(e) => setNewAnswer(e.target.value)}
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={submitting || !newAnswer.trim()}
+                                        className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 text-white px-4 py-2.5 rounded-full transition-colors flex items-center justify-center gap-2 min-w-[70px]"
+                                    >
+                                        {submitting ? (
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        ) : (
+                                            <>
+                                                <Send size={16} />
+                                                <span className="hidden sm:inline">שלח</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                                {/* Anonymous toggle - modern switch */}
+                                <label className="flex items-center gap-1.5 cursor-pointer group mr-2">
+                                    <div className="relative">
+                                        <input
+                                            type="checkbox"
+                                            checked={isAnonymousAnswer}
+                                            onChange={(e) => setIsAnonymousAnswer(e.target.checked)}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-7 h-4 bg-gray-700 rounded-full peer-checked:bg-indigo-500 transition-colors"></div>
+                                        <div className="absolute top-0.5 left-0.5 w-3 h-3 bg-gray-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition-all shadow-sm"></div>
+                                    </div>
+                                    <span className={`text-xs transition-colors ${isAnonymousAnswer ? 'text-indigo-400' : 'text-gray-500 group-hover:text-gray-400'}`}>
+                                        🙈 אנונימי
+                                    </span>
+                                </label>
                             </form>
                         ) : (
                             <Link
@@ -854,8 +911,27 @@ export function QuestionCard({
                                     </div>
                                 )}
 
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="text-xs font-bold text-indigo-300">{ans.authorName}</span>
+                                <div className="flex justify-between items-center mb-1">
+                                    <div className="flex items-center gap-2">
+                                        {ans.isAnonymous ? (
+                                            <>
+                                                <span className="text-xs font-bold text-gray-400">🙈 אנונימי</span>
+                                                {/* Show real author to admins */}
+                                                {isAdmin && ans.realAuthorName && (
+                                                    <span className="text-xs text-red-400/70">(באמת: {ans.realAuthorName})</span>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <LiveAuthorDisplay
+                                                authorId={ans.authorId}
+                                                fallbackName={ans.authorName}
+                                                nameClassName="text-xs font-bold text-indigo-300"
+                                            />
+                                        )}
+                                    </div>
+                                    <span className="text-xs text-gray-500">
+                                        {ans.createdAt ? toSmartDate(ans.createdAt.toDate ? ans.createdAt.toDate() : new Date(ans.createdAt)) : ''}
+                                    </span>
                                 </div>
 
                                 {/* Answer Content - Edit or Display Mode */}

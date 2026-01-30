@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useToast } from '@/context/ToastContext';
+import { LiveAuthorDisplay, useLiveAuthorProfile } from '@/components/ui/LiveAuthorDisplay';
 
 interface Answer {
     id: string;
@@ -17,6 +18,9 @@ interface Answer {
     authorId: string;
     authorName: string;
     authorPhoto?: string;
+    realAuthorId?: string;
+    realAuthorName?: string;
+    isAnonymous?: boolean;
     flowerCount: number;
     dislikeCount?: number;
     createdAt: any;
@@ -53,6 +57,7 @@ export default function QuestionPage() {
     const [isSubscribed, setIsSubscribed] = useState(false);
     const [userVotes, setUserVotes] = useState<{ [answerId: string]: VoteType }>({});
     const [votingInProgress, setVotingInProgress] = useState<{ [answerId: string]: boolean }>({});
+    const [isAnonymousAnswer, setIsAnonymousAnswer] = useState(false);
 
     // Fetch question
     useEffect(() => {
@@ -133,9 +138,13 @@ export default function QuestionPage() {
             // Add answer
             await addDoc(collection(db, 'questions', questionId, 'answers'), {
                 content: answerText.trim(),
-                authorId: user.uid,
-                authorName: user.displayName || 'משתמש',
-                authorPhoto: user.photoURL || null,
+                authorId: isAnonymousAnswer ? 'anonymous' : user.uid,
+                authorName: isAnonymousAnswer ? 'אנונימי' : (user.displayName || 'משתמש'),
+                authorPhoto: isAnonymousAnswer ? null : (user.photoURL || null),
+                // Always save real author info for admin access
+                realAuthorId: user.uid,
+                realAuthorName: user.displayName || 'משתמש',
+                isAnonymous: isAnonymousAnswer,
                 flowerCount: 0,
                 dislikeCount: 0,
                 createdAt: serverTimestamp()
@@ -169,6 +178,7 @@ export default function QuestionPage() {
             });
 
             setAnswerText('');
+            setIsAnonymousAnswer(false); // Reset anonymous toggle
             showToast('התשובה נשלחה!', 'success');
         } catch (error) {
             console.error('Error submitting answer:', error);
@@ -320,14 +330,22 @@ export default function QuestionPage() {
                             <div key={ans.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
                                 <div className="flex justify-between items-start">
                                     <div className="flex gap-3 flex-1">
-                                        <Link href={`/user/${ans.authorName}`}>
-                                            <div className="w-8 h-8 rounded-full bg-pink-50 flex items-center justify-center text-pink-600 text-sm font-bold">
-                                                {ans.authorName[0]}
-                                            </div>
-                                        </Link>
+                                        <LiveAuthorDisplay
+                                            authorId={ans.authorId}
+                                            fallbackName={ans.authorName}
+                                            fallbackPhoto={ans.authorPhoto}
+                                            showAvatar={true}
+                                            avatarSize="sm"
+                                            linkToProfile={true}
+                                            nameClassName="font-bold text-gray-800 text-sm"
+                                        />
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <span className="font-bold text-gray-800 text-sm">{ans.authorName}</span>
+                                                <LiveAuthorDisplay
+                                                    authorId={ans.authorId}
+                                                    fallbackName={ans.authorName}
+                                                    nameClassName="font-bold text-gray-800 text-sm"
+                                                />
                                                 <span className="text-xs text-gray-400">{answerTime}</span>
                                             </div>
                                             <p className="text-gray-600 mt-1 whitespace-pre-wrap">{ans.content}</p>
@@ -340,8 +358,8 @@ export default function QuestionPage() {
                                             onClick={() => handleVote(ans.id, 'like')}
                                             disabled={isVoting}
                                             className={`flex flex-col items-center p-2 rounded-lg transition-all ${userVote === 'like'
-                                                    ? 'text-pink-500 bg-pink-50'
-                                                    : 'text-gray-300 hover:text-pink-500 hover:bg-pink-50'
+                                                ? 'text-pink-500 bg-pink-50'
+                                                : 'text-gray-300 hover:text-pink-500 hover:bg-pink-50'
                                                 } ${isVoting ? 'opacity-50' : ''}`}
                                         >
                                             <Heart size={20} fill={userVote === 'like' ? 'currentColor' : 'none'} />
@@ -352,8 +370,8 @@ export default function QuestionPage() {
                                             onClick={() => handleVote(ans.id, 'dislike')}
                                             disabled={isVoting}
                                             className={`flex flex-col items-center p-2 rounded-lg transition-all ${userVote === 'dislike'
-                                                    ? 'text-red-500 bg-red-50'
-                                                    : 'text-gray-300 hover:text-red-400 hover:bg-red-50'
+                                                ? 'text-red-500 bg-red-50'
+                                                : 'text-gray-300 hover:text-red-400 hover:bg-red-50'
                                                 } ${isVoting ? 'opacity-50' : ''}`}
                                         >
                                             <ThumbsDown size={18} />
@@ -370,22 +388,40 @@ export default function QuestionPage() {
             {/* Answer Input - Fixed at bottom */}
             {user ? (
                 <div className="fixed bottom-16 left-0 right-0 bg-white border-t p-4 md:bottom-0">
-                    <form onSubmit={handleSubmitAnswer} className="max-w-3xl mx-auto flex gap-2">
-                        <input
-                            type="text"
-                            value={answerText}
-                            onChange={(e) => setAnswerText(e.target.value)}
-                            placeholder="כתוב תגובה מכבדת..."
-                            className="flex-1 bg-gray-100 rounded-full px-6 py-3 focus:bg-white focus:ring-2 focus:ring-primary outline-none transition-all text-gray-900"
-                            disabled={submitting}
-                        />
-                        <button
-                            type="submit"
-                            disabled={!answerText.trim() || submitting}
-                            className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform disabled:opacity-50"
-                        >
-                            <Send size={20} />
-                        </button>
+                    <form onSubmit={handleSubmitAnswer} className="max-w-3xl mx-auto space-y-2">
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={answerText}
+                                onChange={(e) => setAnswerText(e.target.value)}
+                                placeholder="כתוב תגובה מכבדת..."
+                                className="flex-1 bg-gray-100 rounded-full px-6 py-3 focus:bg-white focus:ring-2 focus:ring-primary outline-none transition-all text-gray-900"
+                                disabled={submitting}
+                            />
+                            <button
+                                type="submit"
+                                disabled={!answerText.trim() || submitting}
+                                className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform disabled:opacity-50"
+                            >
+                                <Send size={20} />
+                            </button>
+                        </div>
+                        {/* Anonymous toggle */}
+                        <label className="flex items-center gap-1.5 cursor-pointer group mr-4">
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    checked={isAnonymousAnswer}
+                                    onChange={(e) => setIsAnonymousAnswer(e.target.checked)}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-7 h-4 bg-gray-300 rounded-full peer-checked:bg-indigo-500 transition-colors"></div>
+                                <div className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full peer-checked:translate-x-3 transition-all shadow-sm"></div>
+                            </div>
+                            <span className={`text-xs transition-colors ${isAnonymousAnswer ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                🙈 אנונימי
+                            </span>
+                        </label>
                     </form>
                 </div>
             ) : (
