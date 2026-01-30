@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, Send, Edit2, MoreVertical, X, ShieldAlert } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, Send, Edit2, MoreVertical, X, ShieldAlert, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, updateDoc, increment, collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -77,6 +77,13 @@ export function QuestionCard({
     const [likedAnswers, setLikedAnswers] = useState<Set<string>>(new Set());
     const [dislikedAnswers, setDislikedAnswers] = useState<Set<string>>(new Set());
     const [isAnonymousAnswer, setIsAnonymousAnswer] = useState(false);
+    const [visibleAnswersCount, setVisibleAnswersCount] = useState(10);
+    const [showAnswerForm, setShowAnswerForm] = useState(false);
+    const [isAtBottom, setIsAtBottom] = useState(false);
+
+    // Refs for scroll and click-outside
+    const answersContainerRef = useRef<HTMLDivElement>(null);
+    const answersSectionRef = useRef<HTMLDivElement>(null);
 
     // Admin State
     const [showAdminModal, setShowAdminModal] = useState(false);
@@ -138,6 +145,49 @@ export function QuestionCard({
         };
         fetchAnswers();
     }, [id]);
+
+    // Infinite scroll for answers + track if at bottom
+    const handleAnswersScroll = useCallback(() => {
+        const container = answersContainerRef.current;
+        if (!container || !expanded) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+        // Check if at bottom (within 50px)
+        setIsAtBottom(distanceFromBottom < 50);
+
+        // Load more when near bottom (100px threshold)
+        if (distanceFromBottom < 100) {
+            if (visibleAnswersCount < answers.length) {
+                setVisibleAnswersCount(prev => Math.min(prev + 10, answers.length));
+            }
+        }
+    }, [expanded, visibleAnswersCount, answers.length]);
+
+    // Attach scroll listener
+    useEffect(() => {
+        const container = answersContainerRef.current;
+        if (!container) return;
+
+        container.addEventListener('scroll', handleAnswersScroll);
+        return () => container.removeEventListener('scroll', handleAnswersScroll);
+    }, [handleAnswersScroll]);
+
+    // Click-outside handler to close form/answers
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (answersSectionRef.current && !answersSectionRef.current.contains(e.target as Node)) {
+                setShowAnswerForm(false);
+                setExpanded(false);
+            }
+        };
+
+        if (showAnswerForm || expanded) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showAnswerForm, expanded]);
 
     const handleFlower = async () => {
         if (!user) {
@@ -670,8 +720,8 @@ export function QuestionCard({
     };
 
     return (
-        <div className="w-full h-full flex flex-col p-6 bg-slate-900 text-white overflow-y-auto">
-            <div className="flex-1 w-full flex flex-col gap-4">
+        <div className="w-full h-full flex flex-col p-3 sm:p-4 md:p-6 bg-slate-900 text-white overflow-hidden">
+            <div className="flex-1 w-full flex flex-col gap-2 sm:gap-3 md:gap-4 min-h-0">
 
                 {/* Like Login Prompt */}
                 {showLikePrompt && !user && (
@@ -773,8 +823,8 @@ export function QuestionCard({
                         </div>
                     ) : (
                         <>
-                            <h2 className="text-xl font-bold mb-3 leading-tight text-white">{editTitle}</h2>
-                            <p className={`text-gray-300 text-base leading-relaxed whitespace-pre-wrap pl-4 border-l-2 border-indigo-500/50 cursor-pointer ${expanded ? '' : 'line-clamp-4'}`} onClick={toggleExpanded}>
+                            <h2 className="text-lg sm:text-xl font-bold mb-2 sm:mb-3 leading-tight text-white">{editTitle}</h2>
+                            <p className={`text-gray-300 text-sm sm:text-base leading-relaxed whitespace-pre-wrap pl-2 sm:pl-4 border-l-2 border-indigo-500/50 cursor-pointer ${expanded ? '' : 'line-clamp-3 sm:line-clamp-4'}`} onClick={toggleExpanded}>
                                 {editContent}
                             </p>
                         </>
@@ -800,7 +850,7 @@ export function QuestionCard({
                     </button>
 
                     <button
-                        onClick={toggleExpanded}
+                        onClick={() => setShowAnswerForm(true)}
                         className="flex items-center gap-2 text-gray-500 hover:text-indigo-400 transition-colors"
                     >
                         <MessageCircle size={22} />
@@ -819,8 +869,8 @@ export function QuestionCard({
                     </div>
                 </div>
 
-                {/* Answers Section */}
-                <div className="space-y-3 mt-2">
+                {/* Answers Section - Takes remaining height, relative for scroll button positioning */}
+                <div ref={answersSectionRef} className="flex-1 flex flex-col min-h-0 mt-2 relative">
 
                     {/* Reply indicator */}
                     {replyingTo && (
@@ -833,34 +883,41 @@ export function QuestionCard({
                         </div>
                     )}
 
-                    {/* Answer Form */}
-                    {expanded && (
+                    {/* Answer Form - Opens independently when clicking write button */}
+                    {showAnswerForm && (
                         user ? (
-                            <form onSubmit={handleSubmitAnswer} className="mb-4 space-y-2">
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
+                            <form onSubmit={handleSubmitAnswer} className="mb-4 space-y-3 bg-gray-800/30 rounded-xl p-3 border border-gray-700">
+                                <div className="flex gap-2 items-end">
+                                    <textarea
                                         placeholder="כתוב תשובה..."
-                                        className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500"
+                                        className="flex-1 bg-gray-800/80 border border-gray-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500 resize-none min-h-[70px] max-h-[150px]"
                                         value={newAnswer}
                                         onChange={(e) => setNewAnswer(e.target.value)}
+                                        rows={2}
+                                        autoFocus
                                     />
-                                    <button
-                                        type="submit"
-                                        disabled={submitting || !newAnswer.trim()}
-                                        className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 text-white px-4 py-2.5 rounded-full transition-colors flex items-center justify-center gap-2 min-w-[70px]"
-                                    >
-                                        {submitting ? (
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        ) : (
-                                            <>
-                                                <Send size={16} />
-                                                <span className="hidden sm:inline">שלח</span>
-                                            </>
-                                        )}
-                                    </button>
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            type="submit"
+                                            disabled={submitting || !newAnswer.trim()}
+                                            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 text-white p-3 rounded-2xl transition-colors flex items-center justify-center"
+                                        >
+                                            {submitting ? (
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            ) : (
+                                                <Send size={18} />
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAnswerForm(false)}
+                                            className="text-gray-500 hover:text-white p-2 rounded-xl transition-colors"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
                                 </div>
-                                {/* Anonymous toggle - modern switch */}
+                                {/* Anonymous toggle */}
                                 <label className="flex items-center gap-1.5 cursor-pointer group mr-2">
                                     <div className="relative">
                                         <input
@@ -887,22 +944,30 @@ export function QuestionCard({
                         )
                     )}
 
-                    {answers.length > 0 && expanded && (
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">תשובות ({answers.length})</h3>
+                    {/* Answers Section Header - Simple, no wrapper */}
+                    {expanded && (
+                        <div className="flex items-center justify-between py-2">
+                            <h3 className="text-sm font-bold text-gray-400">💬 תשובות ({answers.length})</h3>
                             <button
-                                onClick={() => setExpanded(false)}
-                                className="text-gray-500 hover:text-white text-lg px-2"
+                                onClick={() => {
+                                    setExpanded(false);
+                                    setShowAnswerForm(false);
+                                }}
+                                className="text-gray-500 hover:text-white p-1"
                             >
-                                ✕
+                                <X size={18} />
                             </button>
                         </div>
                     )}
 
-                    {/* Answers List */}
-                    <div className="space-y-3">
-                        {(expanded ? answers : answers.slice(0, 2)).map(ans => (
-                            <div key={ans.id} className="bg-gray-800/50 rounded-xl p-3 border border-gray-700">
+                    {/* Answers List - No wrapper styling, just scroll */}
+                    <div
+                        ref={answersContainerRef}
+                        className={`space-y-2 sm:space-y-3 ${expanded ? 'flex-1 overflow-y-auto' : ''}`}
+                        style={expanded ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : {}}
+                    >
+                        {(expanded ? answers.slice(0, visibleAnswersCount) : answers.slice(0, 2)).map(ans => (
+                            <div key={ans.id} className="bg-gray-800/50 rounded-xl p-2 sm:p-3 border border-gray-700">
                                 {/* Reply Quote */}
                                 {ans.replyTo && (
                                     <div className="bg-gray-900/50 rounded-lg p-2 mb-2 text-xs border-r-2 border-indigo-500">
@@ -961,7 +1026,7 @@ export function QuestionCard({
                                         </div>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-300 leading-snug mb-2">{ans.content}</p>
+                                    <p className="text-sm text-gray-300 leading-relaxed mb-2 whitespace-pre-wrap break-words">{ans.content}</p>
                                 )}
 
                                 {/* Answer Actions */}
@@ -1025,23 +1090,57 @@ export function QuestionCard({
                             </div>
                         ))}
 
-                        {/* Frosted glass preview when not expanded - clickable to expand */}
+                        {/* Write Answer Button - at end of answers, inside scroll */}
+                        {expanded && user && (
+                            <div className="py-8 pb-20 flex justify-center">
+                                <button
+                                    onClick={() => setShowAnswerForm(true)}
+                                    className="w-14 h-14 bg-gradient-to-br from-indigo-600 to-pink-500 hover:from-indigo-500 hover:to-pink-400 text-white rounded-full shadow-lg flex items-center justify-center transition-all"
+                                >
+                                    <MessageCircle size={24} />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Scroll to End Button - absolute inside section, hidden at bottom */}
+                        {expanded && answers.length > 5 && !isAtBottom && (
+                            <button
+                                onClick={() => {
+                                    const container = answersContainerRef.current;
+                                    if (container) {
+                                        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                                    }
+                                }}
+                                className="absolute bottom-4 left-4 w-10 h-10 bg-gradient-to-br from-indigo-600 to-pink-500 hover:from-indigo-500 hover:to-pink-400 text-white rounded-full shadow-lg flex items-center justify-center z-10"
+                            >
+                                <ChevronDown size={20} />
+                            </button>
+                        )}
+
+                        {/* Frosted glass preview when not expanded - shows real answers blurred */}
                         {!expanded && answers.length > 2 && (
                             <div
                                 onClick={toggleExpanded}
                                 className="relative cursor-pointer group"
                             >
-                                {/* Show 3rd and 4th answer blurred behind */}
-                                <div className="space-y-2 blur-[3px] opacity-50 pointer-events-none">
+                                {/* Show 3rd and 4th answer with same styling as expanded but blurred */}
+                                <div className="space-y-2 blur-[2px] opacity-60 pointer-events-none">
                                     {answers.slice(2, 4).map(ans => (
-                                        <div key={ans.id} className="bg-gray-800/50 rounded-xl p-3 border border-gray-700">
-                                            <p className="text-sm text-gray-300 line-clamp-2">{ans.content}</p>
+                                        <div key={ans.id} className="bg-gray-800/50 rounded-xl p-2 sm:p-3 border border-gray-700">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-xs font-bold text-gray-400">
+                                                    {ans.isAnonymous ? '🙈 אנונימי' : ans.authorName}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-gray-300 line-clamp-2 whitespace-pre-wrap break-words">
+                                                {ans.content}
+                                            </p>
                                         </div>
                                     ))}
                                 </div>
-                                {/* Frosted glass overlay */}
-                                <div className="absolute inset-0 backdrop-blur-[2px] bg-slate-900/40 rounded-xl flex items-center justify-center">
-                                    <span className="text-indigo-400 font-medium text-sm group-hover:text-indigo-300 transition-colors">
+                                {/* Frosted glass overlay with click prompt */}
+                                <div className="absolute inset-0 backdrop-blur-[1px] bg-slate-900/30 rounded-xl flex items-center justify-center">
+                                    <span className="text-indigo-400 font-medium text-sm group-hover:text-indigo-300 transition-colors bg-slate-900/50 px-3 py-1.5 rounded-lg">
                                         הקש לפתיחת {Math.max(0, answerCount - 2)} תשובות נוספות
                                     </span>
                                 </div>
@@ -1098,7 +1197,7 @@ export function QuestionCard({
                     />
                 )}
             </div>
-        </div>
+        </div >
     );
 }
 

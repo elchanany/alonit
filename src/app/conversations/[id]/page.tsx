@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause, Smile, Check, CheckCheck, MoreVertical, Ban, Flag } from 'lucide-react';
+import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause, Smile, Check, CheckCheck, MoreVertical, Ban, Flag, ChevronDown } from 'lucide-react';
 import { format, isToday, isYesterday, isSameDay, formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useToast } from '@/context/ToastContext';
@@ -108,6 +108,11 @@ export default function ChatPage() {
     // Block menu state
     const [showBlockMenu, setShowBlockMenu] = useState(false);
 
+    // Scroll state for scroll-to-bottom button
+    const [isAtBottom, setIsAtBottom] = useState(true);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+
     // Scroll to bottom helper
     const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
         messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
@@ -117,6 +122,23 @@ export default function ChatPage() {
     const isFirstLoad = useRef(true);
     const prevMessageCount = useRef(0);
 
+    // Handle scroll to track if user is at bottom
+    const handleMessagesScroll = () => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const atBottom = distanceFromBottom < 50;
+
+        setIsAtBottom(atBottom);
+
+        // Clear unread count when scrolled to bottom
+        if (atBottom) {
+            setUnreadCount(0);
+        }
+    };
+
     useEffect(() => {
         // Scroll when messages load or update
         if (messages.length > 0) {
@@ -124,13 +146,22 @@ export default function ChatPage() {
                 isFirstLoad.current = false;
                 // Instant scroll on first load
                 scrollToBottom('auto');
+                setIsAtBottom(true);
             } else if (messages.length > prevMessageCount.current) {
-                // Smooth scroll on new message
-                scrollToBottom('smooth');
+                // New message arrived
+                const newMessagesCount = messages.length - prevMessageCount.current;
+
+                if (isAtBottom) {
+                    // Auto-scroll if at bottom
+                    scrollToBottom('smooth');
+                } else {
+                    // Increment unread count if not at bottom
+                    setUnreadCount(prev => prev + newMessagesCount);
+                }
             }
             prevMessageCount.current = messages.length;
         }
-    }, [messages.length]);
+    }, [messages.length, isAtBottom]);
 
     // Subscribe to conversation details (real-time for block status)
     useEffect(() => {
@@ -772,10 +803,10 @@ export default function ChatPage() {
     const amIBlocked = conversation?.blockedBy?.includes(otherParticipantId || '');
 
     return (
-        <div className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4 z-0">
-            <div className="w-full max-w-md h-full max-h-[85vh] md:max-h-[85vh] flex flex-col">
-                {/* Chat Card - matches site dark cards, narrower like TikTok */}
-                <div className="flex flex-col h-full bg-gray-800/60 backdrop-blur-sm rounded-2xl border border-gray-700/50 overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-0 md:p-4 z-0">
+            <div className="w-full md:max-w-md h-full md:max-h-[85vh] flex flex-col">
+                {/* Chat Card - full screen on mobile, card on desktop */}
+                <div className="flex flex-col h-full bg-gray-800/60 backdrop-blur-sm md:rounded-2xl border-0 md:border border-gray-700/50 overflow-hidden shadow-2xl">
                     {/* Header - inside the card */}
                     <div className="shrink-0 bg-gray-800/80 border-b border-gray-700/50 px-4 py-3 flex items-center gap-3">
                         <button onClick={() => router.back()} className="text-gray-400 hover:text-white transition-colors">
@@ -885,7 +916,11 @@ export default function ChatPage() {
                     )}
 
                     {/* Messages area - takes remaining space */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+                    <div
+                        ref={messagesContainerRef}
+                        onScroll={handleMessagesScroll}
+                        className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent relative"
+                    >
                         {messages.length === 0 && (
                             <div className="text-center text-gray-500 py-8">
                                 <p>אין הודעות עדיין. שלח הודעה ראשונה! 💬</p>
@@ -988,6 +1023,25 @@ export default function ChatPage() {
                             );
                         })}
                         <div ref={messagesEndRef} />
+
+                        {/* Scroll to Bottom Button with Unread Badge */}
+                        {!isAtBottom && (
+                            <button
+                                onClick={() => {
+                                    scrollToBottom('smooth');
+                                    setUnreadCount(0);
+                                }}
+                                className="sticky bottom-4 left-1/2 -translate-x-1/2 w-10 h-10 bg-gradient-to-br from-indigo-600 to-pink-500 hover:from-indigo-500 hover:to-pink-400 text-white rounded-full shadow-lg flex items-center justify-center z-10 transition-all"
+                            >
+                                <ChevronDown size={20} />
+                                {/* Unread Count Badge */}
+                                {unreadCount > 0 && (
+                                    <span className="absolute -top-2 -right-1 min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center shadow-md">
+                                        {unreadCount > 99 ? '99+' : unreadCount}
+                                    </span>
+                                )}
+                            </button>
+                        )}
                     </div>
 
                     {/* Image Preview with Caption */}
@@ -1080,7 +1134,7 @@ export default function ChatPage() {
                             </div>
                         )}
 
-                        <form onSubmit={handleSendMessage} className="flex gap-1 items-end relative bg-gray-900/50 p-1 rounded-3xl border border-gray-800 backdrop-blur-sm">
+                        <form onSubmit={handleSendMessage} className="flex gap-2 items-center relative bg-gray-900/50 p-2 rounded-3xl border border-gray-800 backdrop-blur-sm">
 
                             {/* Hidden Inputs */}
                             <input
@@ -1099,60 +1153,33 @@ export default function ChatPage() {
                                 className="hidden"
                             />
 
-                            {/* Media Selection Bottom Sheet (Overlay) */}
+                            {/* Media Selection - Small inline popup like emoji picker */}
                             {showMediaOptions && (
-                                <div
-                                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in duration-200"
-                                    onClick={() => setShowMediaOptions(false)}
-                                >
-                                    <div
-                                        className="w-full sm:w-96 bg-gray-900 border-t sm:border border-gray-800 rounded-t-2xl sm:rounded-2xl p-6 flex flex-col gap-6 animate-in slide-in-from-bottom-10 duration-200 shadow-2xl pb-10 sm:p-6"
-                                        onClick={(e) => e.stopPropagation()}
+                                <div className="absolute bottom-full left-0 mb-2 bg-gray-900 border border-gray-700 rounded-xl p-2 shadow-xl flex gap-2 animate-in slide-in-from-bottom-2 duration-150 z-20">
+                                    {/* Camera - Mobile only */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowMediaOptions(false);
+                                            if (cameraInputRef.current) cameraInputRef.current.click();
+                                        }}
+                                        className="md:hidden w-10 h-10 flex items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 transition-colors"
+                                        title="מצלמה"
                                     >
-                                        <div className="w-12 h-1.5 bg-gray-700 rounded-full mx-auto sm:hidden opacity-50" />
-
-                                        <h3 className="text-center text-gray-400 text-sm font-medium">בחר מדיה לשליחה</h3>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            {/* Camera - HIDDEN ON DESKTOP */}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowMediaOptions(false);
-                                                    if (cameraInputRef.current) cameraInputRef.current.click();
-                                                }}
-                                                className="md:hidden flex flex-col items-center justify-center gap-3 p-4 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all group"
-                                            >
-                                                <div className="w-14 h-14 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                    <span className="text-3xl">📸</span>
-                                                </div>
-                                                <span className="text-sm">מצלמה</span>
-                                            </button>
-
-                                            {/* Gallery */}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowMediaOptions(false);
-                                                    fileInputRef.current?.click();
-                                                }}
-                                                className="col-span-1 md:col-span-2 flex flex-col items-center justify-center gap-3 p-4 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all group"
-                                            >
-                                                <div className="w-14 h-14 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                    <span className="text-3xl">🖼️</span>
-                                                </div>
-                                                <span className="text-sm">גלריה</span>
-                                            </button>
-                                        </div>
-
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowMediaOptions(false)}
-                                            className="mt-2 py-3 w-full bg-gray-800 rounded-xl text-gray-400 font-medium hover:bg-gray-700 transition-colors"
-                                        >
-                                            ביטול
-                                        </button>
-                                    </div>
+                                        📸
+                                    </button>
+                                    {/* Gallery */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowMediaOptions(false);
+                                            fileInputRef.current?.click();
+                                        }}
+                                        className="w-10 h-10 flex items-center justify-center rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
+                                        title="גלריה"
+                                    >
+                                        🖼️
+                                    </button>
                                 </div>
                             )}
 
@@ -1160,7 +1187,7 @@ export default function ChatPage() {
                             <button
                                 type="button"
                                 onClick={() => setShowMediaOptions(!showMediaOptions)}
-                                className={`w-10 h-10 mb-1 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showMediaOptions
+                                className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showMediaOptions
                                     ? 'text-indigo-400 bg-indigo-500/20'
                                     : 'text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10'
                                     }`}
@@ -1173,7 +1200,7 @@ export default function ChatPage() {
                             <button
                                 type="button"
                                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                                className={`w-10 h-10 mb-1 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showEmojiPicker
+                                className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showEmojiPicker
                                     ? 'text-yellow-400 bg-yellow-500/20'
                                     : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10'
                                     }`}
@@ -1183,7 +1210,7 @@ export default function ChatPage() {
                             </button>
 
                             {/* Auto-expanding Textarea */}
-                            <div className="flex-1 min-w-0 py-2 relative">
+                            <div className="flex-1 min-w-0 relative">
                                 <textarea
                                     ref={(el) => {
                                         // @ts-ignore
@@ -1207,7 +1234,7 @@ export default function ChatPage() {
                                         }
                                     }}
                                     placeholder={isBlockedByMe ? "ביטול חסימה כדי לשלוח הודעה" : (isRecording ? "מקליט..." : "הודעה...")}
-                                    className="w-full bg-transparent text-white placeholder-gray-500 text-sm max-h-32 min-h-[24px] resize-none focus:outline-none !ring-0 !border-0 py-2 scrollbar-hide px-2 disabled:opacity-50"
+                                    className="w-full bg-transparent text-white placeholder-gray-500 text-sm max-h-32 min-h-[36px] resize-none focus:outline-none !ring-0 !border-0 py-1 scrollbar-hide px-2 disabled:opacity-50"
                                     dir="rtl"
                                     rows={1}
                                     style={{ maxHeight: '120px' }}
@@ -1235,7 +1262,7 @@ export default function ChatPage() {
                                         if (isRecording) stopRecording();
                                     }
                                 }}
-                                className={`w-10 h-10 mb-1 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isRecording
+                                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isRecording
                                     ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
                                     : (newMessage.trim() || selectedFile ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white')
                                     } ${isBlockedByMe ? 'opacity-50 cursor-not-allowed' : ''}`}

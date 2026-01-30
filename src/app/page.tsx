@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, startAfter, getDocs, DocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { QuestionCard } from '@/components/features/QuestionCard';
 import { RelatedQuestionsTiles } from '@/components/features/RelatedQuestionsTiles';
@@ -35,9 +35,15 @@ export default function Home() {
     const [rightTiles, setRightTiles] = useState<RecommendationQuestion[]>([]);
     const { user } = useAuth();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const INITIAL_LOAD = 10;
+    const LOAD_MORE_COUNT = 10;
 
+    // Initial load - just first batch
     useEffect(() => {
-        const q = query(collection(db, 'questions'), orderBy('createdAt', 'desc'), limit(50));
+        const q = query(collection(db, 'questions'), orderBy('createdAt', 'desc'), limit(INITIAL_LOAD));
 
         const unsubscribe = onSnapshot(q,
             (snapshot) => {
@@ -50,6 +56,8 @@ export default function Home() {
                     } as Question;
                 });
                 setQuestions(docs);
+                setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+                setHasMore(snapshot.docs.length >= INITIAL_LOAD);
                 setLoading(false);
             },
             (error) => {
@@ -60,6 +68,40 @@ export default function Home() {
 
         return () => unsubscribe();
     }, []);
+
+    // Load more questions when approaching end
+    const loadMoreQuestions = useCallback(async () => {
+        if (!hasMore || loadingMore || !lastDoc) return;
+
+        setLoadingMore(true);
+        try {
+            const q = query(
+                collection(db, 'questions'),
+                orderBy('createdAt', 'desc'),
+                startAfter(lastDoc),
+                limit(LOAD_MORE_COUNT)
+            );
+
+            const snapshot = await getDocs(q);
+            const newDocs = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    timeAgo: data.createdAt?.toDate ? formatDistanceToNow(data.createdAt.toDate(), { addSuffix: true, locale: he }) : 'עכשיו'
+                } as Question;
+            });
+
+            if (newDocs.length > 0) {
+                setQuestions(prev => [...prev, ...newDocs]);
+                setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+            }
+            setHasMore(snapshot.docs.length >= LOAD_MORE_COUNT);
+        } catch (error) {
+            console.error('Error loading more questions:', error);
+        }
+        setLoadingMore(false);
+    }, [hasMore, loadingMore, lastDoc]);
 
     // Update related questions when current question changes
     useEffect(() => {
@@ -99,7 +141,7 @@ export default function Home() {
         });
     }, [currentIndex, questions]);
 
-    // Track scroll to update current index
+    // Track scroll to update current index and load more
     const handleScroll = useCallback(() => {
         if (!scrollContainerRef.current) return;
         const container = scrollContainerRef.current;
@@ -109,7 +151,12 @@ export default function Home() {
         if (newIndex !== currentIndex && newIndex >= 0 && newIndex < questions.length) {
             setCurrentIndex(newIndex);
         }
-    }, [currentIndex, questions.length]);
+
+        // Load more when 3 items from end
+        if (newIndex >= questions.length - 3 && hasMore && !loadingMore) {
+            loadMoreQuestions();
+        }
+    }, [currentIndex, questions.length, hasMore, loadingMore, loadMoreQuestions]);
 
     // Scroll to specific question
     const scrollToQuestion = (questionId: string) => {
@@ -159,12 +206,13 @@ export default function Home() {
                             <p className="text-indigo-400">הלילה יפה... היה הראשון להאיר בשאלה!</p>
                         </div>
                     ) : (
-                        questions.map((question) => (
+                        questions.map((question, index) => (
                             <div
                                 key={question.id}
-                                className="h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-4rem)] w-full snap-start snap-always flex items-center justify-center"
+                                className="h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-4rem)] w-full snap-start snap-always flex items-center justify-center py-2"
                             >
-                                <div className="w-full h-full">
+                                {/* Question Card with rounded edges like TikTok */}
+                                <div className="w-full h-full rounded-2xl overflow-hidden">
                                     <QuestionCard
                                         id={question.id}
                                         title={question.title}
