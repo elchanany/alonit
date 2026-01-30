@@ -7,12 +7,13 @@ interface UserAvatarProps {
     user?: Partial<UserProfile> | null;
     src?: string | null;
     name?: string | null;
-    size?: 'sm' | 'md' | 'lg' | 'xl';
+    size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
     className?: string;
     onClick?: () => void;
 }
 
 const SIZE_CLASSES = {
+    xs: 'w-6 h-6 text-[10px]',
     sm: 'w-8 h-8 text-xs',
     md: 'w-10 h-10 text-base', // Increased from sm
     lg: 'w-14 h-14 text-xl',   // Increased from base
@@ -49,7 +50,7 @@ export function UserAvatar({ user, src, name, size = 'md', className = '', onCli
                     alt={displayName}
                     fill
                     className="object-cover"
-                    sizes={size === 'sm' ? '32px' : size === 'md' ? '40px' : size === 'lg' ? '56px' : '96px'}
+                    sizes={size === 'xs' ? '24px' : size === 'sm' ? '32px' : size === 'md' ? '40px' : size === 'lg' ? '56px' : '96px'}
                     quality={100}
                     unoptimized
                 />
