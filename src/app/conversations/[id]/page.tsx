@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { ArrowRight, Send, Trash2, Reply, X, Image as ImageIcon, BellOff, Bell, Loader2, Mic, Square, Play, Pause, Smile, Check, CheckCheck, MoreVertical, Ban, Flag, ChevronDown } from 'lucide-react';
@@ -58,7 +58,6 @@ export default function ChatPage() {
     const conversationId = params.id as string;
     const { user, isVerified } = useAuth();
     const { showToast } = useToast();
-    const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -115,7 +114,14 @@ export default function ChatPage() {
 
     // Scroll to bottom helper
     const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-        messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+        const container = messagesContainerRef.current;
+        if (container) {
+            if (behavior === 'auto') {
+                container.scrollTop = container.scrollHeight;
+            } else {
+                container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+            }
+        }
     };
 
     // Scroll to bottom only when new messages arrive, not on page load
@@ -241,7 +247,7 @@ export default function ChatPage() {
         return () => unsubscribe();
     }, [conversation, user]);
 
-    // Mark messages as read when chat is opened
+    // Mark messages as read when chat is opened (batched for performance)
     useEffect(() => {
         if (!user || messages.length === 0) return;
 
@@ -250,12 +256,15 @@ export default function ChatPage() {
             msg => msg.senderId !== user.uid && !msg.readBy?.includes(user.uid)
         );
 
-        // Mark them as read
+        if (unreadMessages.length === 0) return;
+
+        // Batch all updates into a single write
+        const batch = writeBatch(db);
         unreadMessages.forEach(msg => {
-            updateDoc(doc(db, 'conversations', conversationId, 'messages', msg.id), {
-                readBy: arrayUnion(user.uid)
-            }).catch(err => console.error('Error marking message as read:', err));
+            const msgRef = doc(db, 'conversations', conversationId, 'messages', msg.id);
+            batch.update(msgRef, { readBy: arrayUnion(user.uid) });
         });
+        batch.commit().catch(err => console.error('Error marking messages as read:', err));
     }, [messages, user, conversationId]);
 
     // Auto-send audio when recording stops
@@ -572,16 +581,19 @@ export default function ChatPage() {
 
             await addDoc(collection(db, 'conversations', conversationId, 'messages'), messageData);
 
-            await updateDoc(doc(db, 'conversations', conversationId), {
-                lastMessage: messageData.content,
-                lastMessageTime: serverTimestamp()
-            });
+            // Run conversation update and notification in parallel for speed
+            const parallelOps: Promise<any>[] = [
+                updateDoc(doc(db, 'conversations', conversationId), {
+                    lastMessage: messageData.content,
+                    lastMessageTime: serverTimestamp()
+                })
+            ];
 
             // Notification - only if not muted by recipient
             if (conversation) {
                 const otherParticipantId = conversation.participants.find(p => p !== user.uid);
                 if (otherParticipantId && !conversation.mutedBy?.includes(otherParticipantId)) {
-                    await addDoc(collection(db, 'notifications'), {
+                    parallelOps.push(addDoc(collection(db, 'notifications'), {
                         type: 'MESSAGE',
                         recipientId: otherParticipantId,
                         senderId: user.uid,
@@ -589,9 +601,11 @@ export default function ChatPage() {
                         message: `הודעה חדשה מ-${user.displayName || 'משתמש'}`,
                         read: false,
                         createdAt: serverTimestamp()
-                    });
+                    }));
                 }
             }
+
+            await Promise.all(parallelOps);
         } catch (error) {
             console.error('Error sending message:', error);
             showToast('שגיאה בשליחת ההודעה', 'error');
@@ -803,18 +817,18 @@ export default function ChatPage() {
     const amIBlocked = conversation?.blockedBy?.includes(otherParticipantId || '');
 
     return (
-        <div className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-0 md:p-4 z-0">
+        <div className="fixed inset-0 top-[52px] md:top-16 bottom-[56px] md:bottom-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-0 md:p-4 z-0">
             <div className="w-full md:max-w-md h-full md:max-h-[85vh] flex flex-col">
                 {/* Chat Card - full screen on mobile, card on desktop */}
                 <div className="flex flex-col h-full bg-gray-800/60 backdrop-blur-sm md:rounded-2xl border-0 md:border border-gray-700/50 overflow-hidden shadow-2xl">
                     {/* Header - inside the card */}
-                    <div className="shrink-0 bg-gray-800/80 border-b border-gray-700/50 px-4 py-3 flex items-center gap-3">
+                    <div className="shrink-0 bg-gray-800/80 border-b border-gray-700/50 px-3 py-2 flex items-center gap-2">
                         <button onClick={() => router.back()} className="text-gray-400 hover:text-white transition-colors">
-                            <ArrowRight size={24} />
+                            <ArrowRight size={20} />
                         </button>
                         {/* Profile with glowing ring */}
                         <div className="relative">
-                            <div className={`w-12 h-12 rounded-full p-[2px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ${otherUserStatus === 'online' && !amIBlocked ? 'animate-pulse' : ''}`}>
+                            <div className={`w-9 h-9 md:w-11 md:h-11 rounded-full p-[2px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ${otherUserStatus === 'online' && !amIBlocked ? 'animate-pulse' : ''}`}>
                                 {otherParticipantPhoto ? (
                                     <img src={otherParticipantPhoto} alt="" className="w-full h-full rounded-full object-cover" />
                                 ) : (
@@ -829,7 +843,7 @@ export default function ChatPage() {
                             )}
                         </div>
                         <div className="flex-1">
-                            <h1 className="font-bold text-white">{otherParticipantName}</h1>
+                            <h1 className="font-bold text-white text-sm md:text-base">{otherParticipantName}</h1>
                             {/* If blocked by other user - hide real status */}
                             {amIBlocked ? (
                                 <p className="text-xs text-gray-500">נראה לפני זמן רב</p>
@@ -1022,7 +1036,7 @@ export default function ChatPage() {
                                 </div>
                             );
                         })}
-                        <div ref={messagesEndRef} />
+
 
                         {/* Scroll to Bottom Button with Unread Badge */}
                         {!isAtBottom && (
@@ -1030,6 +1044,7 @@ export default function ChatPage() {
                                 onClick={() => {
                                     scrollToBottom('smooth');
                                     setUnreadCount(0);
+                                    setIsAtBottom(true);
                                 }}
                                 className="sticky bottom-4 left-1/2 -translate-x-1/2 w-10 h-10 bg-gradient-to-br from-indigo-600 to-pink-500 hover:from-indigo-500 hover:to-pink-400 text-white rounded-full shadow-lg flex items-center justify-center z-10 transition-all"
                             >
@@ -1187,26 +1202,26 @@ export default function ChatPage() {
                             <button
                                 type="button"
                                 onClick={() => setShowMediaOptions(!showMediaOptions)}
-                                className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showMediaOptions
+                                className={`w-8 h-8 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showMediaOptions
                                     ? 'text-indigo-400 bg-indigo-500/20'
                                     : 'text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10'
                                     }`}
                                 disabled={isRecording}
                             >
-                                <ImageIcon size={20} />
+                                <ImageIcon size={18} />
                             </button>
 
                             {/* Emoji button */}
                             <button
                                 type="button"
                                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                                className={`w-9 h-9 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showEmojiPicker
+                                className={`w-8 h-8 flex items-center justify-center transition-colors active:scale-95 rounded-full flex-shrink-0 ${showEmojiPicker
                                     ? 'text-yellow-400 bg-yellow-500/20'
                                     : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10'
                                     }`}
                                 disabled={isRecording}
                             >
-                                <Smile size={20} />
+                                <Smile size={18} />
                             </button>
 
                             {/* Auto-expanding Textarea */}
@@ -1262,7 +1277,7 @@ export default function ChatPage() {
                                         if (isRecording) stopRecording();
                                     }
                                 }}
-                                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isRecording
+                                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isRecording
                                     ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
                                     : (newMessage.trim() || selectedFile ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white')
                                     } ${isBlockedByMe ? 'opacity-50 cursor-not-allowed' : ''}`}

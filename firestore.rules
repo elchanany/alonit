@@ -61,7 +61,11 @@ service cloud.firestore {
         match /messages/{messageId} {
             allow read: if isAuth();
             allow create: if isAuth();
-            allow update: if isAuth() && request.auth.uid == resource.data.senderId;
+            // Allow sender to update anything, OR allow any auth user to update ONLY readBy
+            allow update: if isAuth() && (
+                request.auth.uid == resource.data.senderId ||
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+            );
             allow delete: if isAuth() && (request.auth.uid == resource.data.senderId || isAdmin());
         }
     }
