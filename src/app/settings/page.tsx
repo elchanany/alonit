@@ -3,13 +3,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { ArrowRight, Bell, LogOut, User, Camera, Edit2, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { ImageCropper } from '@/components/ui/ImageCropper';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { checkUsernameAvailability } from '@/services/user-level.service';
 
 interface UserSettings {
@@ -140,11 +139,23 @@ export default function SettingsPage() {
         setCropperImage(null);
 
         try {
-            const storageRef = ref(storage, `avatars/${user.uid}`);
-            await uploadBytes(storageRef, croppedBlob);
-            const url = await getDownloadURL(storageRef);
+            // Upload to Cloudinary via API route
+            const formData = new FormData();
+            formData.append('file', croppedBlob, 'avatar.jpg');
+            formData.append('userId', user.uid);
 
-            await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
+            const response = await fetch('/api/upload-avatar', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Upload failed');
+            }
+
+            await updateDoc(doc(db, 'users', user.uid), { photoURL: result.url });
             await refreshProfile();
         } catch (err) {
             console.error('Upload error:', err);
