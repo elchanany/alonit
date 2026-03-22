@@ -204,18 +204,8 @@ export default function UserProfilePage() {
             if (existingConv) {
                 router.push(`/conversations/${existingConv}`);
             } else {
-                // Create new conversation
-                const newConv = await addDoc(collection(db, 'conversations'), {
-                    participants: [user.uid, profile.id],
-                    participantNames: {
-                        [user.uid]: user.displayName || 'משתמש',
-                        [profile.id]: profile.displayName
-                    },
-                    lastMessage: null,
-                    lastMessageTime: serverTimestamp(),
-                    createdAt: serverTimestamp()
-                });
-                router.push(`/conversations/${newConv.id}`);
+                // Navigate to a temporary chat page, conversation will be created on first message send
+                router.push(`/conversations/new_${profile.id}`);
             }
         } catch (error) {
             console.error('Error starting chat:', error);

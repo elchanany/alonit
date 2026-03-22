@@ -155,7 +155,7 @@ export function ImageCropper({ imageUrl, onSave, onCancel }: ImageCropperProps) 
                 onWheel={(e) => {
                     e.preventDefault();
                     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                    setScale(Math.min(3, Math.max(0.5, scale + delta)));
+                    setScale(Math.min(3, Math.max(0.1, scale + delta)));
                 }}
             >
                 {!imageLoaded && (
@@ -196,7 +196,7 @@ export function ImageCropper({ imageUrl, onSave, onCancel }: ImageCropperProps) 
             <div className="flex items-center gap-4 mt-8 bg-gray-800/50 rounded-full px-4 py-2">
                 <button
                     type="button"
-                    onClick={() => setScale(Math.max(0.5, scale - 0.2))}
+                    onClick={() => setScale(Math.max(0.1, scale - 0.2))}
                     className="p-2 text-gray-400 hover:text-white transition-colors"
                     title="הקטן"
                 >
@@ -205,7 +205,7 @@ export function ImageCropper({ imageUrl, onSave, onCancel }: ImageCropperProps) 
 
                 <input
                     type="range"
-                    min="0.5"
+                    min="0.1"
                     max="3"
                     step="0.1"
                     value={scale}
