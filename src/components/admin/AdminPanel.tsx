@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { UserProfile, UserLevel, UserRole, LEVEL_UNLOCKS } from '@/types/user-levels';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
     getAllUsers,
@@ -31,52 +31,52 @@ export default function AdminPanel() {
     const [answersCount, setAnswersCount] = useState(0);
     const [recentUsers, setRecentUsers] = useState<UserProfile[]>([]);
     const [fixingProfiles, setFixingProfiles] = useState(false);
-    const [syncingUsers, setSyncingUsers] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
-        loadData();
-    }, [user, currentUserProfile]);
-
-    async function loadData() {
         if (!user || !currentUserProfile) return;
-
-        try {
-            setLoading(true);
-            // Profile is now from context
-
-            if (currentUserProfile) {
-                const allUsers = await getAllUsers(user.uid);
-                setUsers(allUsers);
-
-                // Sort by lastActive for recent users
-                const sorted = [...allUsers].sort((a, b) => {
-                    const aDate = a.lastActive ? new Date(a.lastActive).getTime() : 0;
-                    const bDate = b.lastActive ? new Date(b.lastActive).getTime() : 0;
-                    return bDate - aDate;
-                });
-                setRecentUsers(sorted.slice(0, 5));
-
-                // Get questions count
-                try {
-                    const questionsSnap = await getDocs(collection(db, 'questions'));
-                    setQuestionsCount(questionsSnap.size);
-
-                    // Count answers (approximate from answerCount field)
-                    let totalAnswers = 0;
-                    questionsSnap.docs.forEach(doc => {
-                        totalAnswers += doc.data().answerCount || 0;
-                    });
-                    setAnswersCount(totalAnswers);
-                } catch (e) {
-                    console.error('Error counting questions:', e);
-                }
-            }
-        } catch (error) {
-            console.error('Error loading users:', error);
-        } finally {
+        if (currentUserProfile.role === UserRole.USER) {
             setLoading(false);
+            return;
         }
-    }
+
+        setLoading(true);
+        const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+            const allUsers = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    uid: doc.id,
+                    ...data,
+                    createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : null),
+                    lastActive: data.lastActive?.toDate ? data.lastActive.toDate() : (data.lastActive ? new Date(data.lastActive) : null),
+                    promotedAt: data.promotedAt?.toDate ? data.promotedAt.toDate() : (data.promotedAt ? new Date(data.promotedAt) : null)
+                } as UserProfile;
+            });
+            setUsers(allUsers);
+
+            const sorted = [...allUsers].sort((a, b) => {
+                const aDate = a.lastActive ? new Date(a.lastActive).getTime() : 0;
+                const bDate = b.lastActive ? new Date(b.lastActive).getTime() : 0;
+                return bDate - aDate;
+            });
+            setRecentUsers(sorted.slice(0, 5));
+            setLoading(false);
+        });
+
+        const unsubscribeQuestions = onSnapshot(collection(db, 'questions'), (snapshot) => {
+            setQuestionsCount(snapshot.size);
+            let totalAnswers = 0;
+            snapshot.docs.forEach(doc => {
+                totalAnswers += doc.data().answerCount || 0;
+            });
+            setAnswersCount(totalAnswers);
+        });
+
+        return () => {
+            unsubscribeUsers();
+            unsubscribeQuestions();
+        };
+    }, [user, currentUserProfile]);
 
     async function handleFixAllProfiles() {
         if (!confirm('האם לתקן את כל הפרופילים עם נתונים חסרים?')) return;
@@ -112,8 +112,6 @@ export default function AdminPanel() {
             } else {
                 alert(`כל ${successCount} הפרופילים תוקנו בהצלחה!`);
             }
-
-            await loadData();
         } catch (error: any) {
             console.error('Critical error in fix profiles:', error);
             alert('שגיאה קריטית בתהליך התיקון: ' + error.message);
@@ -122,42 +120,7 @@ export default function AdminPanel() {
         }
     }
 
-    async function handleSyncUsers() {
-        if (!confirm('האם לסנכרן את כל המשתמשים מ-Firebase Authentication?')) return;
-        setSyncingUsers(true);
 
-        try {
-            // Get current user's token
-            const token = await auth.currentUser?.getIdToken();
-            if (!token) {
-                alert('שגיאה: לא מחובר');
-                return;
-            }
-
-            const response = await fetch('/api/sync-users', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'שגיאה בסנכרון');
-            }
-
-            alert(`סנכרון הושלם!\n\nמשתמשים ב-Auth: ${result.authUsersCount}\nמשתמשים ב-Firestore: ${result.firestoreUsersCount}\nנוצרו: ${result.created}\nעודכנו: ${result.updated}`);
-
-            await loadData();
-        } catch (error: any) {
-            console.error('Sync error:', error);
-            alert('שגיאה בסנכרון: ' + error.message + '\n\nייתכן שצריך להגדיר Firebase Admin SDK credentials.');
-        } finally {
-            setSyncingUsers(false);
-        }
-    }
 
     async function handlePromote(targetUid: string, newLevel: UserLevel, newRole: UserRole, reason: string) {
         if (!user || !currentUserProfile || !selectedUser) return;
@@ -178,7 +141,6 @@ export default function AdminPanel() {
                 LEVEL_UNLOCKS[newLevel].name,
                 newRole
             );
-            await loadData();
             setShowPromoteModal(false);
             setSelectedUser(null);
         } catch (error: any) {
@@ -195,7 +157,6 @@ export default function AdminPanel() {
                 { uid: selectedUser.uid, displayName: selectedUser.displayName, email: selectedUser.email },
                 reason
             );
-            await loadData();
             setShowBlockModal(false);
             setSelectedUser(null);
         } catch (error: any) {
@@ -214,7 +175,6 @@ export default function AdminPanel() {
                 { uid: targetUser.uid, displayName: targetUser.displayName, email: targetUser.email },
                 reason
             );
-            await loadData();
         } catch (error: any) {
             alert(error.message);
         }
@@ -278,13 +238,6 @@ export default function AdminPanel() {
                             )}
                         </div>
                         <div className="text-left flex items-center gap-4">
-                            <button
-                                onClick={handleSyncUsers}
-                                disabled={syncingUsers}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50"
-                            >
-                                {syncingUsers ? '⏳ מסנכרן...' : '🔄 סנכרן משתמשים'}
-                            </button>
                             {brokenProfilesCount > 0 && (
                                 <button
                                     onClick={handleFixAllProfiles}
@@ -344,8 +297,9 @@ export default function AdminPanel() {
                                         <div className="flex items-center gap-3">
                                             <span className="text-2xl">{getLevelIcon(u.level)}</span>
                                             <div>
-                                                <div className="font-bold text-white">{u.displayName}</div>
-                                                <div className="text-xs text-gray-500">{u.email}</div>
+                                                <div className="font-bold text-white text-sm">{u.googleName || u.displayName}</div>
+                                                <div className="text-xs text-indigo-300">@{u.username || u.displayName}</div>
+                                                <div className="text-xs text-gray-500 mt-0.5">{u.email}</div>
                                             </div>
                                         </div>
                                         <div className="text-left">
@@ -373,7 +327,16 @@ export default function AdminPanel() {
 
                 {/* טבלת משתמשים */}
                 {activeTab === 'users' && (
-                    <div className="bg-gray-900/80 backdrop-blur-sm border border-indigo-500/30 rounded-2xl overflow-hidden">
+                    <div className="bg-gray-900/80 backdrop-blur-sm border border-indigo-500/30 rounded-2xl overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-gray-700 bg-gray-800/50">
+                            <input
+                                type="text"
+                                placeholder="🔍 חיפוש לפי שם, שם מקורי, שם משתמש או מייל..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors"
+                            />
+                        </div>
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
@@ -383,16 +346,23 @@ export default function AdminPanel() {
                                         <th className="px-6 py-4 text-right">תפקיד</th>
                                         <th className="px-6 py-4 text-right">נקודות</th>
                                         <th className="px-6 py-4 text-right">פרחים</th>
+                                        <th className="px-6 py-4 text-right">תאריך הצטרפות</th>
                                         <th className="px-6 py-4 text-right">סטטוס</th>
                                         <th className="px-6 py-4 text-right">פעולות</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-700">
-                                    {users.map((userProfile) => (
+                                    {users.filter(u => {
+                                        const searchLower = searchQuery.toLowerCase();
+                                        return (u.displayName || '').toLowerCase().includes(searchLower) ||
+                                               (u.googleName || '').toLowerCase().includes(searchLower) ||
+                                               (u.username || '').toLowerCase().includes(searchLower) ||
+                                               (u.email || '').toLowerCase().includes(searchLower);
+                                    }).map((userProfile) => (
                                         <tr key={userProfile.uid} className={`hover:bg-indigo-900/30 transition-colors ${userProfile.isBlocked ? 'bg-red-900/20' : ''}`}>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center overflow-hidden">
+                                                    <div className="w-10 h-10 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0">
                                                         {userProfile.photoURL ? (
                                                             <img src={userProfile.photoURL} alt="" className="w-full h-full object-cover" />
                                                         ) : (
@@ -402,10 +372,13 @@ export default function AdminPanel() {
                                                         )}
                                                     </div>
                                                     <div>
-                                                        <div className="font-bold text-white">
-                                                            {userProfile.displayName || '(חסר שם)'}
+                                                        <div className="font-bold text-white text-sm">
+                                                            {userProfile.googleName || userProfile.displayName || '(חסר שם)'}
                                                         </div>
-                                                        <div className="text-xs text-gray-500">
+                                                        <div className="text-xs text-indigo-300">
+                                                            @{userProfile.username || userProfile.displayName}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 mt-0.5">
                                                             {userProfile.email || userProfile.uid}
                                                         </div>
                                                     </div>
@@ -420,6 +393,9 @@ export default function AdminPanel() {
                                             <td className="px-6 py-4"><RoleBadge role={userProfile.role} /></td>
                                             <td className="px-6 py-4 font-bold text-indigo-400">{userProfile.stats?.points ?? 0}</td>
                                             <td className="px-6 py-4 font-bold text-purple-400">{userProfile.stats?.flowers ?? 0}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-300">
+                                                {userProfile.createdAt ? new Date(userProfile.createdAt).toLocaleDateString('he-IL') : 'לא ידוע'}
+                                            </td>
                                             <td className="px-6 py-4">
                                                 {userProfile.isBlocked ? (
                                                     <span className="bg-red-500/20 text-red-400 px-3 py-1 rounded-full text-sm">חסום</span>
@@ -485,9 +461,19 @@ export default function AdminPanel() {
                                                     <span className="text-gray-500 text-sm">{log.relativeTime}</span>
                                                 </div>
                                                 <p className="text-white">
-                                                    <span className="font-bold">{log.adminDisplayName}</span>
+                                                    <span className="font-bold">
+                                                        {(() => {
+                                                            const adminUser = users.find(u => u.uid === log.adminUid);
+                                                            return adminUser && adminUser.googleName ? `${adminUser.googleName} (@${adminUser.username || adminUser.displayName})` : log.adminDisplayName;
+                                                        })()}
+                                                    </span>
                                                     <span className="text-gray-400"> ביצע פעולה על </span>
-                                                    <span className="font-bold">{log.targetDisplayName}</span>
+                                                    <span className="font-bold">
+                                                        {(() => {
+                                                            const targetUser = users.find(u => u.uid === log.targetUid);
+                                                            return targetUser && targetUser.googleName ? `${targetUser.googleName} (@${targetUser.username || targetUser.displayName})` : log.targetDisplayName;
+                                                        })()}
+                                                    </span>
                                                 </p>
                                                 <p className="text-gray-400 text-sm mt-1">סיבה: {log.reason}</p>
                                             </div>

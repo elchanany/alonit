@@ -7,6 +7,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { MessageCircle, ArrowRight, Settings, Heart, LogOut } from 'lucide-react';
 import Link from 'next/link';
+import { trackEvent } from '@/services/recommendation.service';
 
 interface UserProfile {
     id: string;
@@ -37,6 +38,12 @@ export default function UserProfilePage() {
     const [questions, setQuestions] = useState<UserQuestion[]>([]);
     const [loading, setLoading] = useState(true);
     const [isOwnProfile, setIsOwnProfile] = useState(false);
+
+    useEffect(() => {
+        if (profile?.id && user?.uid !== profile.id && !isOwnProfile) {
+            trackEvent('VIEW_PROFILE', { authorId: profile.id });
+        }
+    }, [profile?.id, user?.uid, isOwnProfile]);
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -204,8 +211,18 @@ export default function UserProfilePage() {
             if (existingConv) {
                 router.push(`/conversations/${existingConv}`);
             } else {
-                // Navigate to a temporary chat page, conversation will be created on first message send
-                router.push(`/conversations/new_${profile.id}`);
+                // Create new conversation
+                const newConv = await addDoc(collection(db, 'conversations'), {
+                    participants: [user.uid, profile.id],
+                    participantNames: {
+                        [user.uid]: user.displayName || 'משתמש',
+                        [profile.id]: profile.displayName
+                    },
+                    lastMessage: null,
+                    lastMessageTime: serverTimestamp(),
+                    createdAt: serverTimestamp()
+                });
+                router.push(`/conversations/${newConv.id}`);
             }
         } catch (error) {
             console.error('Error starting chat:', error);
@@ -258,12 +275,24 @@ export default function UserProfilePage() {
                         <span className="px-3 py-1 bg-indigo-600/30 text-indigo-300 text-xs rounded-full font-medium border border-indigo-500/30">
                             {profile.trustLevel === 'LEGEND' ? '🏆 אגדה' :
                                 profile.trustLevel === 'MENTOR' ? '⭐ מנטור' :
-                                    profile.trustLevel === 'TRUSTED' ? '✓ נאמן' : '🌱 חדש'}
+                                    profile.trustLevel === 'TRUSTED' ? '✓ נאמן' : '🌱 שתיל'}
                         </span>
                     </div>
 
                     {profile.bio && (
                         <p className="text-gray-400 mb-4">{profile.bio}</p>
+                    )}
+
+                    {profile.createdAt && (
+                        <p className="text-sm text-gray-500 mb-4">
+                           הצטרף/ה בתאריך: {new Date(profile.createdAt.seconds ? profile.createdAt.toDate() : profile.createdAt).toLocaleString('he-IL', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                           })}
+                        </p>
                     )}
 
                     {/* Stats */}

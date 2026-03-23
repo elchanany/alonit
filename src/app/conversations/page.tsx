@@ -61,10 +61,8 @@ export default function ConversationsPage() {
         return () => unsubscribe();
     }, [user]);
 
-    // Filter conversations based on search, and hide empty conversations (no messages sent yet)
+    // Filter conversations based on search
     const filteredConversations = conversations.filter(chat => {
-        // Hide conversations with no messages
-        if (!chat.lastMessage) return false;
         if (!searchTerm.trim()) return true;
         const otherName = Object.entries(chat.participantNames)
             .find(([id]) => id !== user?.uid)?.[1] || '';

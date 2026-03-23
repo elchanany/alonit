@@ -56,9 +56,6 @@ export default function ChatPage() {
     const params = useParams();
     const router = useRouter();
     const conversationId = params.id as string;
-    const isNewChat = conversationId.startsWith('new_');
-    const newChatUserId = isNewChat ? conversationId.replace('new_', '') : null;
-
     const { user, isVerified } = useAuth();
     const { showToast } = useToast();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -174,11 +171,6 @@ export default function ChatPage() {
 
     // Subscribe to conversation details (real-time for block status)
     useEffect(() => {
-        if (isNewChat) {
-            setLoading(false);
-            return;
-        }
-
         const unsubscribe = onSnapshot(doc(db, 'conversations', conversationId), (docSnap) => {
             if (docSnap.exists()) {
                 const convData = { id: docSnap.id, ...docSnap.data() } as Conversation;
@@ -193,8 +185,6 @@ export default function ChatPage() {
 
     // Subscribe to messages
     useEffect(() => {
-        if (isNewChat) return;
-
         const messagesQuery = query(
             collection(db, 'conversations', conversationId, 'messages'),
             orderBy('createdAt', 'asc')
@@ -232,17 +222,9 @@ export default function ChatPage() {
 
     // Subscribe to other user's online status and profile
     useEffect(() => {
-        let otherId: string;
-
-        if (isNewChat && newChatUserId) {
-            otherId = newChatUserId;
-        } else if (conversation) {
-            const foundId = conversation.participants.find(p => p !== user?.uid);
-            if (!foundId) return;
-            otherId = foundId;
-        } else {
-            return;
-        }
+        if (!conversation) return;
+        const otherId = conversation.participants.find(p => p !== user?.uid);
+        if (!otherId) return;
 
         const unsubscribe = onSnapshot(doc(db, 'users', otherId), (docSnap) => {
             const data = docSnap.data();
@@ -256,8 +238,8 @@ export default function ChatPage() {
             // Update live profile (name and photo)
             if (data) {
                 setOtherUserProfile({
-                    displayName: data.displayName || data.username || (conversation?.participantNames?.[otherId]) || 'משתמש',
-                    photoURL: data.photoURL || (conversation?.participantPhotos?.[otherId])
+                    displayName: data.displayName || data.username || conversation.participantNames[otherId] || 'משתמש',
+                    photoURL: data.photoURL || conversation.participantPhotos?.[otherId]
                 });
             }
         });
@@ -597,52 +579,20 @@ export default function ChatPage() {
                 messageData.replyToSender = replyData.senderName;
             }
 
-            let currentConversationId = conversationId;
-            let currentConversation = conversation;
-
-            if (isNewChat && newChatUserId) {
-                // Determine the other participant's name (try to get from live profile we fetched)
-                const otherName = otherUserProfile?.displayName || 'משתמש';
-
-                // Create conversation first
-                const newConvRef = await addDoc(collection(db, 'conversations'), {
-                    participants: [user.uid, newChatUserId],
-                    participantNames: {
-                        [user.uid]: user.displayName || 'משתמש',
-                        [newChatUserId]: otherName
-                    },
-                    lastMessage: null,
-                    lastMessageTime: serverTimestamp(),
-                    createdAt: serverTimestamp()
-                });
-
-                currentConversationId = newConvRef.id;
-
-                // We don't have the full object yet but we need it for notifications below
-                currentConversation = {
-                    id: currentConversationId,
-                    participants: [user.uid, newChatUserId],
-                    participantNames: {
-                        [user.uid]: user.displayName || 'משתמש',
-                        [newChatUserId]: otherName
-                    }
-                };
-            }
-
-            await addDoc(collection(db, 'conversations', currentConversationId, 'messages'), messageData);
+            await addDoc(collection(db, 'conversations', conversationId, 'messages'), messageData);
 
             // Run conversation update and notification in parallel for speed
             const parallelOps: Promise<any>[] = [
-                updateDoc(doc(db, 'conversations', currentConversationId), {
+                updateDoc(doc(db, 'conversations', conversationId), {
                     lastMessage: messageData.content,
                     lastMessageTime: serverTimestamp()
                 })
             ];
 
             // Notification - only if not muted by recipient
-            if (currentConversation) {
-                const otherParticipantId = currentConversation.participants.find(p => p !== user.uid);
-                if (otherParticipantId && !currentConversation.mutedBy?.includes(otherParticipantId)) {
+            if (conversation) {
+                const otherParticipantId = conversation.participants.find(p => p !== user.uid);
+                if (otherParticipantId && !conversation.mutedBy?.includes(otherParticipantId)) {
                     parallelOps.push(addDoc(collection(db, 'notifications'), {
                         type: 'MESSAGE',
                         recipientId: otherParticipantId,
@@ -656,17 +606,6 @@ export default function ChatPage() {
             }
 
             await Promise.all(parallelOps);
-
-            // If it was a new chat, update URL to real ID without refreshing page state
-            if (isNewChat) {
-                window.history.replaceState(null, '', `/conversations/${currentConversationId}`);
-                // Note: The listener for conversationId will not automatically re-run because
-                // router.replace/window.history doesn't trigger a full re-render with new params right away in Next.js 13+ app dir.
-                // However, since we're pushing a message to firestore, we don't necessarily NEED to re-render everything 
-                // immediately as long as subsequent messages go to the right ID.
-                // A better approach is to use router.replace
-                router.replace(`/conversations/${currentConversationId}`);
-            }
         } catch (error) {
             console.error('Error sending message:', error);
             showToast('שגיאה בשליחת ההודעה', 'error');
@@ -872,7 +811,7 @@ export default function ChatPage() {
         ? conversation.participantPhotos?.[conversation.participants.find(p => p !== user?.uid) || '']
         : undefined);
 
-    const otherParticipantId = isNewChat ? newChatUserId : conversation?.participants.find(p => p !== user?.uid);
+    const otherParticipantId = conversation?.participants.find(p => p !== user?.uid);
 
     // Check if current user is blocked by the other participant (must be after otherParticipantId)
     const amIBlocked = conversation?.blockedBy?.includes(otherParticipantId || '');
@@ -918,7 +857,7 @@ export default function ChatPage() {
                                     נראה לאחרונה {formatLastSeen(otherUserStatus)}
                                 </p>
                             ) : (
-                                <p className="text-xs text-gray-500">נראה לאחרונה</p>
+                                <p className="text-xs text-gray-500">לא מחובר</p>
                             )}
                         </div>
 

@@ -25,14 +25,25 @@ service cloud.firestore {
     match /questions/{questionId} {
       allow read: if true;
       allow create: if isAuth();
-      // Allow update/delete if owner OR admin
-      allow update, delete: if isAuth() && (request.auth.uid == resource.data.authorId || isAdmin());
+      // Allow update if owner, admin, or just updating engagement counters
+      allow update: if isAuth() && (
+        request.auth.uid == resource.data.authorId || 
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answerCount', 'flowerCount', 'viewCount'])
+      );
+      allow delete: if isAuth() && (request.auth.uid == resource.data.authorId || isAdmin());
       
       // Answers subcollection
       match /answers/{answerId} {
         allow read: if true;
         allow create: if isAuth();
-        allow update, delete: if isAuth() && (request.auth.uid == resource.data.authorId || isAdmin());
+        // Allow update if owner, admin, or just updating engagement counters
+        allow update: if isAuth() && (
+          request.auth.uid == resource.data.authorId || 
+          isAdmin() ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['flowerCount', 'dislikeCount'])
+        );
+        allow delete: if isAuth() && (request.auth.uid == resource.data.authorId || isAdmin());
       }
     }
     

@@ -1,35 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, increment, deleteDoc, getDocs, where } from 'firebase/firestore';
+import { doc, getDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { QuestionCard } from '@/components/features/QuestionCard';
+import { RelatedQuestionsTiles } from '@/components/features/RelatedQuestionsTiles';
+import { findRelatedQuestions, getRelatedTiles, Question as RecommendationQuestion, rankFeedForUser, trackInteraction } from '@/services/recommendation.service';
 import { useAuth } from '@/context/AuthContext';
-import { MessageCircle, Heart, Share2, Send, ArrowRight, Bell, BellOff, ThumbsDown } from 'lucide-react';
-import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
-import { useToast } from '@/context/ToastContext';
-import { LiveAuthorDisplay, useLiveAuthorProfile } from '@/components/ui/LiveAuthorDisplay';
-
-interface Answer {
-    id: string;
-    content: string;
-    authorId: string;
-    authorName: string;
-    authorPhoto?: string;
-    realAuthorId?: string;
-    realAuthorName?: string;
-    isAnonymous?: boolean;
-    flowerCount: number;
-    dislikeCount?: number;
-    createdAt: any;
-}
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 interface Question {
     id: string;
     title: string;
     content: string;
+    description?: string;
     category: string;
     authorId: string;
     authorName: string;
@@ -37,401 +24,250 @@ interface Question {
     isAnonymous: boolean;
     flowerCount: number;
     answerCount: number;
+    viewCount: number;
     createdAt: any;
+    timeAgo?: string;
 }
-
-type VoteType = 'like' | 'dislike' | null;
 
 export default function QuestionPage() {
     const params = useParams();
     const router = useRouter();
     const questionId = params.id as string;
-    const { user, isVerified } = useAuth();
-    const { showToast } = useToast();
-
-    const [question, setQuestion] = useState<Question | null>(null);
-    const [answers, setAnswers] = useState<Answer[]>([]);
+    const { user } = useAuth();
+    
+    const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
-    const [answerText, setAnswerText] = useState('');
-    const [submitting, setSubmitting] = useState(false);
-    const [isSubscribed, setIsSubscribed] = useState(false);
-    const [userVotes, setUserVotes] = useState<{ [answerId: string]: VoteType }>({});
-    const [votingInProgress, setVotingInProgress] = useState<{ [answerId: string]: boolean }>({});
-    const [isAnonymousAnswer, setIsAnonymousAnswer] = useState(false);
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [leftTiles, setLeftTiles] = useState<RecommendationQuestion[]>([]);
+    const [rightTiles, setRightTiles] = useState<RecommendationQuestion[]>([]);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const FEED_POOL_SIZE = 50; // Get a pool of 50 recent questions to sort for recommendations.
 
-    // Fetch question
+    // Load initial question and build personalized feed
     useEffect(() => {
-        const fetchQuestion = async () => {
-            const docRef = doc(db, 'questions', questionId);
-            const docSnap = await getDoc(docRef);
+        const fetchFeed = async () => {
+            if (!questionId) return;
 
-            if (docSnap.exists()) {
-                setQuestion({ id: docSnap.id, ...docSnap.data() } as Question);
-            } else {
-                router.push('/'); // Question not found
+            try {
+                // 1. Fetch specific question
+                const docRef = doc(db, 'questions', questionId);
+                const docSnap = await getDoc(docRef);
+
+                if (!docSnap.exists()) {
+                    setLoading(false);
+                    return; // Question not found
+                }
+                
+                const data = docSnap.data();
+                const specificQuestion: Question = {
+                    id: docSnap.id,
+                    ...data,
+                    timeAgo: data.createdAt?.toDate ? formatDistanceToNow(data.createdAt.toDate(), { addSuffix: true, locale: he }) : 'עכשיו'
+                } as Question;
+
+                // 2. Fetch recent questions pool to recommend from
+                const q = query(
+                    collection(db, 'questions'),
+                    orderBy('createdAt', 'desc'),
+                    limit(FEED_POOL_SIZE)
+                );
+                
+                const poolSnapshot = await getDocs(q);
+                const poolDocs: Question[] = poolSnapshot.docs.map(poolDoc => {
+                    const poolData = poolDoc.data();
+                    return {
+                        id: poolDoc.id,
+                        ...poolData,
+                        timeAgo: poolData.createdAt?.toDate ? formatDistanceToNow(poolData.createdAt.toDate(), { addSuffix: true, locale: he }) : 'עכשיו'
+                    } as Question;
+                });
+
+                // 3. Rank feed using personalized affinity (FYP style)
+                const fypFeed = rankFeedForUser(poolDocs as any) as Question[];
+
+                // 4. Assemble the feed: Target question at the top, then related ones.
+                const finalFeed = [
+                    specificQuestion, 
+                    ...fypFeed.filter(q => q.id !== specificQuestion.id)
+                ];
+                
+                setQuestions(finalFeed);
+                setLoading(false);
+            } catch (error) {
+                console.error("Error fetching question feed:", error);
+                setLoading(false);
             }
-            setLoading(false);
         };
 
-        fetchQuestion();
-    }, [questionId, router]);
-
-    // Subscribe to answers
-    useEffect(() => {
-        const answersQuery = query(
-            collection(db, 'questions', questionId, 'answers'),
-            orderBy('createdAt', 'desc')
-        );
-
-        const unsubscribe = onSnapshot(answersQuery, (snapshot) => {
-            const answersData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Answer[];
-            setAnswers(answersData);
-        });
-
-        return () => unsubscribe();
+        fetchFeed();
     }, [questionId]);
 
-    // Fetch user's votes
+
+    const questionStartTimeRef = useRef<number>(Date.now());
+
+    // Track Watch Time
     useEffect(() => {
-        if (!user) return;
-
-        const fetchUserVotes = async () => {
-            const votes: { [answerId: string]: VoteType } = {};
-
-            for (const answer of answers) {
-                const voteQuery = query(
-                    collection(db, 'questions', questionId, 'answers', answer.id, 'votes'),
-                    where('userId', '==', user.uid)
-                );
-                const voteSnap = await getDocs(voteQuery);
-
-                if (!voteSnap.empty) {
-                    const voteData = voteSnap.docs[0].data();
-                    votes[answer.id] = voteData.type as VoteType;
-                }
+        questionStartTimeRef.current = Date.now();
+        const currentQ = questions[currentIndex];
+        
+        return () => {
+            if (currentQ) {
+                const duration = Date.now() - questionStartTimeRef.current;
+                trackInteraction(currentQ as any, 'view', duration);
             }
+        };
+    }, [currentIndex, questions]);
 
-            setUserVotes(votes);
+    // Update related questions sidebars when current question changes
+    useEffect(() => {
+        if (questions.length === 0) return;
+
+        const currentQuestion = questions[currentIndex];
+        if (!currentQuestion) return;
+
+        const recQuestion: RecommendationQuestion = {
+            id: currentQuestion.id,
+            title: currentQuestion.title,
+            content: currentQuestion.content || '',
+            category: currentQuestion.category,
+            authorName: currentQuestion.authorName,
+            authorPhoto: currentQuestion.authorPhoto,
+            flowerCount: currentQuestion.flowerCount,
+            answerCount: currentQuestion.answerCount,
+            createdAt: currentQuestion.createdAt
         };
 
-        if (answers.length > 0) {
-            fetchUserVotes();
-        }
-    }, [user, answers, questionId]);
+        const allRecQuestions: RecommendationQuestion[] = questions.map(q => ({
+            id: q.id,
+            title: q.title,
+            content: q.content || '',
+            category: q.category,
+            authorName: q.authorName,
+            authorPhoto: q.authorPhoto,
+            flowerCount: q.flowerCount,
+            answerCount: q.answerCount,
+            createdAt: q.createdAt
+        }));
 
-    // Submit answer
-    const handleSubmitAnswer = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!user || !answerText.trim() || submitting) return;
+        findRelatedQuestions(recQuestion, allRecQuestions, 6).then(related => {
+            const { left, right } = getRelatedTiles(related);
+            setLeftTiles(left);
+            setRightTiles(right);
+        });
+    }, [currentIndex, questions]);
 
-        // Check email verification for email users
-        if (user.providerData[0]?.providerId === 'password' && !isVerified) {
-            showToast('יש לאמת את המייל לפני שניתן לענות', 'error');
-            return;
-        }
-
-        setSubmitting(true);
-        try {
-            // Add answer
-            await addDoc(collection(db, 'questions', questionId, 'answers'), {
-                content: answerText.trim(),
-                authorId: isAnonymousAnswer ? 'anonymous' : user.uid,
-                authorName: isAnonymousAnswer ? 'אנונימי' : (user.displayName || 'משתמש'),
-                authorPhoto: isAnonymousAnswer ? null : (user.photoURL || null),
-                // Always save real author info for admin access
-                realAuthorId: user.uid,
-                realAuthorName: user.displayName || 'משתמש',
-                isAnonymous: isAnonymousAnswer,
-                flowerCount: 0,
-                dislikeCount: 0,
-                createdAt: serverTimestamp()
-            });
-
-            // Update answer count on question
-            await updateDoc(doc(db, 'questions', questionId), {
-                answerCount: increment(1)
-            });
-
-            // Create notification for question author
-            if (question && question.authorId !== user.uid) {
-                await addDoc(collection(db, 'notifications'), {
-                    type: 'ANSWER',
-                    recipientId: question.authorId,
-                    senderId: user.uid,
-                    senderName: user.displayName || 'משתמש',
-                    questionId: questionId,
-                    questionTitle: question.title,
-                    message: `${user.displayName || 'משתמש'} ענה על השאלה שלך`,
-                    read: false,
-                    createdAt: serverTimestamp()
-                });
+    // Track scroll
+    const handleScroll = useCallback(() => {
+        if (!scrollContainerRef.current) return;
+        const container = scrollContainerRef.current;
+        const scrollTop = container.scrollTop;
+        const itemHeight = container.clientHeight;
+        const newIndex = Math.round(scrollTop / itemHeight);
+        if (newIndex !== currentIndex && newIndex >= 0 && newIndex < questions.length) {
+            setCurrentIndex(newIndex);
+            
+            // Update the browser URL without triggering a page reload
+            if (questions[newIndex]) {
+                window.history.replaceState(null, '', `/question/${questions[newIndex].id}`);
             }
+        }
+    }, [currentIndex, questions]);
 
-            // Subscribe answerer to question notifications
-            await addDoc(collection(db, 'subscriptions'), {
-                userId: user.uid,
-                questionId: questionId,
-                createdAt: serverTimestamp()
+    // Scroll to specific question
+    const scrollToQuestion = (id: string) => {
+        const index = questions.findIndex(q => q.id === id);
+        if (index >= 0 && scrollContainerRef.current) {
+            const itemHeight = scrollContainerRef.current.clientHeight;
+            scrollContainerRef.current.scrollTo({
+                top: index * itemHeight,
+                behavior: 'auto'
             });
-
-            setAnswerText('');
-            setIsAnonymousAnswer(false); // Reset anonymous toggle
-            showToast('התשובה נשלחה!', 'success');
-        } catch (error) {
-            console.error('Error submitting answer:', error);
-            showToast('שגיאה בשליחת התשובה', 'error');
         }
-        setSubmitting(false);
-    };
-
-    // Handle vote (like/dislike with toggle)
-    const handleVote = async (answerId: string, voteType: 'like' | 'dislike') => {
-        if (!user) {
-            showToast('יש להתחבר כדי להצביע', 'info');
-            return;
-        }
-
-        if (votingInProgress[answerId]) return;
-        setVotingInProgress(prev => ({ ...prev, [answerId]: true }));
-
-        try {
-            const currentVote = userVotes[answerId];
-            const voteRef = collection(db, 'questions', questionId, 'answers', answerId, 'votes');
-            const answerRef = doc(db, 'questions', questionId, 'answers', answerId);
-
-            // Find existing vote
-            const existingVoteQuery = query(voteRef, where('userId', '==', user.uid));
-            const existingVoteSnap = await getDocs(existingVoteQuery);
-
-            if (currentVote === voteType) {
-                // Same vote clicked - REMOVE vote (toggle off)
-                if (!existingVoteSnap.empty) {
-                    await deleteDoc(existingVoteSnap.docs[0].ref);
-                    await updateDoc(answerRef, {
-                        [voteType === 'like' ? 'flowerCount' : 'dislikeCount']: increment(-1)
-                    });
-                    setUserVotes(prev => ({ ...prev, [answerId]: null }));
-                }
-            } else if (currentVote) {
-                // Different vote - switch vote
-                if (!existingVoteSnap.empty) {
-                    await updateDoc(existingVoteSnap.docs[0].ref, { type: voteType });
-                }
-                await updateDoc(answerRef, {
-                    [currentVote === 'like' ? 'flowerCount' : 'dislikeCount']: increment(-1),
-                    [voteType === 'like' ? 'flowerCount' : 'dislikeCount']: increment(1)
-                });
-                setUserVotes(prev => ({ ...prev, [answerId]: voteType }));
-            } else {
-                // No existing vote - add new
-                await addDoc(voteRef, {
-                    userId: user.uid,
-                    type: voteType,
-                    createdAt: serverTimestamp()
-                });
-                await updateDoc(answerRef, {
-                    [voteType === 'like' ? 'flowerCount' : 'dislikeCount']: increment(1)
-                });
-                setUserVotes(prev => ({ ...prev, [answerId]: voteType }));
-            }
-        } catch (error) {
-            console.error('Error voting:', error);
-            showToast('שגיאה בהצבעה', 'error');
-        }
-
-        setVotingInProgress(prev => ({ ...prev, [answerId]: false }));
     };
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center">טוען...</div>;
+        return (
+            <div className="h-screen w-full flex items-center justify-center bg-black text-white">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    <p className="animate-pulse">טוען את התוכן המבוקש...</p>
+                </div>
+            </div>
+        );
     }
 
-    if (!question) {
-        return <div className="min-h-screen flex items-center justify-center">השאלה לא נמצאה</div>;
+    if (questions.length === 0 && !loading) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white">
+                  <div className="text-4xl mb-4">🌙</div>
+                  <h2 className="text-xl font-bold mb-4">השאלה לא נמצאה</h2>
+                  <button onClick={() => router.push('/')} className="px-6 py-2 bg-indigo-600 rounded-full font-bold">
+                      חזור לדף הבית
+                  </button>
+            </div>
+        );
     }
-
-    const timeAgo = question.createdAt?.toDate
-        ? formatDistanceToNow(question.createdAt.toDate(), { addSuffix: true, locale: he })
-        : 'עכשיו';
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-24">
-            {/* Header */}
-            <div className="sticky top-0 bg-white/80 backdrop-blur-md border-b z-10 px-4 py-3 flex items-center gap-3">
-                <button onClick={() => router.back()} className="text-gray-600">
-                    <ArrowRight size={24} />
-                </button>
-                <h1 className="font-bold text-gray-800 truncate flex-1">שאלה</h1>
-                <button className="text-gray-400">
-                    {isSubscribed ? <BellOff size={20} /> : <Bell size={20} />}
-                </button>
+        <main className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-black z-0">
+            {/* Back Button Overlay */}
+            <div className="absolute top-4 right-4 z-50">
+               <button onClick={() => router.push('/')} className="bg-black/50 hover:bg-black/70 backdrop-blur-md p-2 rounded-full text-white transition">
+                  <ArrowRight size={24} />
+               </button>
             </div>
 
-            <div className="max-w-3xl mx-auto p-4 space-y-6">
-                {/* Question Card */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                        <Link href={question.isAnonymous ? '#' : `/user/${question.authorName}`}>
-                            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
-                                {question.authorName[0]}
-                            </div>
-                        </Link>
-                        <div>
-                            <div className="font-bold text-gray-900">
-                                {question.isAnonymous ? 'אנונימי' : question.authorName}
-                            </div>
-                            <div className="text-xs text-gray-500">{timeAgo}</div>
-                        </div>
-                        <span className="mr-auto px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                            {question.category}
-                        </span>
-                    </div>
-
-                    <h1 className="text-xl font-bold text-gray-900 mb-3">{question.title}</h1>
-                    {question.content && (
-                        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                            {question.content}
-                        </p>
-                    )}
-
-                    <div className="flex items-center gap-4 mt-6 pt-4 border-t text-sm text-gray-500">
-                        <span>{answers.length} תשובות</span>
-                        <span>{question.flowerCount || 0} 🌸</span>
-                        <span className="flex-1"></span>
-                        <button className="flex items-center gap-2 text-gray-400 hover:text-gray-600">
-                            <Share2 size={18} />
-                            שתף
-                        </button>
-                    </div>
+            <div className="h-full w-full flex justify-center items-stretch">
+                {/* Left Sidebar - Related Questions (Desktop only) */}
+                <div className="hidden lg:flex flex-1 justify-start min-w-0 pl-4">
+                    <RelatedQuestionsTiles
+                        questions={leftTiles}
+                        side="left"
+                        onQuestionClick={scrollToQuestion}
+                    />
                 </div>
 
-                {/* Answers List */}
-                <div className="space-y-4">
-                    <h2 className="font-bold text-gray-700 px-2">תשובות ({answers.length})</h2>
-
-                    {answers.length === 0 && (
-                        <div className="text-center py-8 text-gray-400">
-                            <p>עדיין אין תשובות. היה הראשון לענות!</p>
-                        </div>
-                    )}
-
-                    {answers.map((ans) => {
-                        const answerTime = ans.createdAt?.toDate
-                            ? formatDistanceToNow(ans.createdAt.toDate(), { addSuffix: true, locale: he })
-                            : 'עכשיו';
-
-                        const userVote = userVotes[ans.id];
-                        const isVoting = votingInProgress[ans.id];
-
-                        return (
-                            <div key={ans.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex gap-3 flex-1">
-                                        <LiveAuthorDisplay
-                                            authorId={ans.authorId}
-                                            fallbackName={ans.authorName}
-                                            fallbackPhoto={ans.authorPhoto}
-                                            showAvatar={true}
-                                            avatarSize="sm"
-                                            linkToProfile={true}
-                                            nameClassName="font-bold text-gray-800 text-sm"
-                                        />
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <LiveAuthorDisplay
-                                                    authorId={ans.authorId}
-                                                    fallbackName={ans.authorName}
-                                                    nameClassName="font-bold text-gray-800 text-sm"
-                                                />
-                                                <span className="text-xs text-gray-400">{answerTime}</span>
-                                            </div>
-                                            <p className="text-gray-600 mt-1 whitespace-pre-wrap">{ans.content}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Vote Buttons */}
-                                    <div className="flex flex-col items-center gap-1 mr-2">
-                                        <button
-                                            onClick={() => handleVote(ans.id, 'like')}
-                                            disabled={isVoting}
-                                            className={`flex flex-col items-center p-2 rounded-lg transition-all ${userVote === 'like'
-                                                ? 'text-pink-500 bg-pink-50'
-                                                : 'text-gray-300 hover:text-pink-500 hover:bg-pink-50'
-                                                } ${isVoting ? 'opacity-50' : ''}`}
-                                        >
-                                            <Heart size={20} fill={userVote === 'like' ? 'currentColor' : 'none'} />
-                                            <span className="text-xs font-medium">{ans.flowerCount || 0}</span>
-                                        </button>
-
-                                        <button
-                                            onClick={() => handleVote(ans.id, 'dislike')}
-                                            disabled={isVoting}
-                                            className={`flex flex-col items-center p-2 rounded-lg transition-all ${userVote === 'dislike'
-                                                ? 'text-red-500 bg-red-50'
-                                                : 'text-gray-300 hover:text-red-400 hover:bg-red-50'
-                                                } ${isVoting ? 'opacity-50' : ''}`}
-                                        >
-                                            <ThumbsDown size={18} />
-                                            <span className="text-xs font-medium">{ans.dislikeCount || 0}</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Answer Input - Fixed at bottom */}
-            {user ? (
-                <div className="fixed bottom-16 left-0 right-0 bg-white border-t p-4 md:bottom-0">
-                    <form onSubmit={handleSubmitAnswer} className="max-w-3xl mx-auto space-y-2">
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={answerText}
-                                onChange={(e) => setAnswerText(e.target.value)}
-                                placeholder="כתוב תגובה מכבדת..."
-                                className="flex-1 bg-gray-100 rounded-full px-6 py-3 focus:bg-white focus:ring-2 focus:ring-primary outline-none transition-all text-gray-900"
-                                disabled={submitting}
-                            />
-                            <button
-                                type="submit"
-                                disabled={!answerText.trim() || submitting}
-                                className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform disabled:opacity-50"
-                            >
-                                <Send size={20} />
-                            </button>
-                        </div>
-                        {/* Anonymous toggle */}
-                        <label className="flex items-center gap-1.5 cursor-pointer group mr-4">
-                            <div className="relative">
-                                <input
-                                    type="checkbox"
-                                    checked={isAnonymousAnswer}
-                                    onChange={(e) => setIsAnonymousAnswer(e.target.checked)}
-                                    className="sr-only peer"
+                {/* Main Feed */}
+                <div
+                    ref={scrollContainerRef}
+                    onScroll={handleScroll}
+                    className="w-full max-w-lg overflow-y-auto snap-y snap-mandatory h-full no-scrollbar relative shrink-0"
+                >
+                    {questions.map((question, index) => (
+                        <div
+                            key={question.id + index}
+                            className="h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-4rem)] w-full snap-start snap-always flex items-center justify-center py-2"
+                        >
+                            {/* Question Card with rounded edges like TikTok */}
+                            <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl">
+                                <QuestionCard
+                                    id={question.id}
+                                    title={question.title}
+                                    content={question.content || question.description || ""}
+                                    authorName={question.isAnonymous ? 'אנונימי' : question.authorName}
+                                    authorPhoto={question.isAnonymous ? null : question.authorPhoto}
+                                    authorId={question.authorId}
+                                    createdAt={question.createdAt}
+                                    flowerCount={question.flowerCount || 0}
+                                    answerCount={question.answerCount || 0}
+                                    viewCount={question.viewCount || 0}
+                                    timeAgo={question.timeAgo || 'עכשיו'}
+                                    category={question.category}
                                 />
-                                <div className="w-7 h-4 bg-gray-300 rounded-full peer-checked:bg-indigo-500 transition-colors"></div>
-                                <div className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full peer-checked:translate-x-3 transition-all shadow-sm"></div>
                             </div>
-                            <span className={`text-xs transition-colors ${isAnonymousAnswer ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
-                                🙈 אנונימי
-                            </span>
-                        </label>
-                    </form>
+                        </div>
+                    ))}
                 </div>
-            ) : (
-                <div className="fixed bottom-16 left-0 right-0 bg-white border-t p-4 text-center md:bottom-0">
-                    <Link href="/login" className="text-primary font-bold hover:underline">
-                        התחבר כדי לענות
-                    </Link>
+
+                {/* Right Sidebar - Related Questions (Desktop only) */}
+                <div className="hidden lg:flex flex-1 justify-end min-w-0 pr-4">
+                    <RelatedQuestionsTiles
+                        questions={rightTiles}
+                        side="right"
+                        onQuestionClick={scrollToQuestion}
+                    />
                 </div>
-            )}
-        </div>
+            </div>
+        </main>
     );
 }
-

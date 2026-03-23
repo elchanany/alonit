@@ -13,6 +13,7 @@ import { logDeleteQuestion, logDeleteAnswer, logEditQuestion, logEditAnswer, log
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { LiveAuthorDisplay } from '@/components/ui/LiveAuthorDisplay';
 import { toSmartDate } from '@/utils/hebrewDate';
+import { trackInteraction, Question as RecQuestion } from '@/services/recommendation.service';
 
 interface QuestionCardProps {
     id: string;
@@ -63,6 +64,11 @@ export function QuestionCard({
 }: QuestionCardProps) {
     const { user, userProfile: currentUserProfile } = useAuth();
     const { showToast } = useToast();
+
+    const questObj: RecQuestion = {
+        id, title, content, authorName, authorPhoto: authorPhoto || undefined, authorId: authorId || 'anonymous',
+        flowerCount, answerCount, viewCount, createdAt: createdAt || new Date(), category: category || ''
+    };
 
     const [liked, setLiked] = useState(false);
     const [disliked, setDisliked] = useState(false);
@@ -219,6 +225,7 @@ export function QuestionCard({
         // Add like
         setLiked(true);
         setLocalFlowerCount(prev => prev + 1);
+        trackInteraction(questObj, 'like');
 
         try {
             const docRef = doc(db, 'questions', id);
@@ -258,9 +265,11 @@ export function QuestionCard({
         // Add dislike
         setDisliked(true);
         setLocalDislikeCount(prev => prev + 1);
+        trackInteraction(questObj, 'dislike');
     };
 
     const handleShare = async () => {
+        trackInteraction(questObj, 'share');
         const shareUrl = window.location.origin + '/question/' + id;
         if (navigator.share) {
             try {
@@ -536,6 +545,7 @@ export function QuestionCard({
             setReplyingTo(null);
             setIsAnonymousAnswer(false); // Reset anonymous toggle
             fetchAllAnswers();
+            trackInteraction(questObj, 'answer');
             showToast('התשובה נשלחה בהצלחה', 'success');
         } catch (error: any) {
             console.error('Error submitting answer:', error);

@@ -16,12 +16,17 @@ export interface Question {
     id: string;
     title: string;
     content: string;
+    description?: string;
     category: string;
     authorName: string;
+    authorId?: string; 
     authorPhoto?: string;
+    isAnonymous?: boolean;
     flowerCount: number;
     answerCount: number;
+    viewCount?: number;
     createdAt: any;
+    timeAgo?: string;
 }
 
 export interface RelatedQuestion {
@@ -32,7 +37,7 @@ export interface RelatedQuestion {
 // Extract keywords from text
 export function extractKeywords(text: string): string[] {
     if (!text) return [];
-
+    
     // Clean and split text
     const words = text
         .toLowerCase()
@@ -40,7 +45,7 @@ export function extractKeywords(text: string): string[] {
         .split(/\s+/)
         .filter(word => word.length > 2) // Only words with 3+ chars
         .filter(word => !HEBREW_STOP_WORDS.has(word));
-
+        
     // Count word frequency
     const wordCount: { [key: string]: number } = {};
     words.forEach(word => {
@@ -59,39 +64,39 @@ function calculateKeywordOverlap(keywords1: string[], keywords2: string[]): numb
     const set1 = new Set(keywords1);
     const set2 = new Set(keywords2);
     let overlap = 0;
-
+    
     set1.forEach(keyword => {
         if (set2.has(keyword)) {
             overlap++;
         }
     });
-
+    
     return overlap;
 }
 
-// Find related questions based on category and keywords
+// Find related questions based on category and keywords (Original method for sidebars)
 export async function findRelatedQuestions(
     currentQuestion: Question,
     allQuestions: Question[],
     maxResults: number = 6
 ): Promise<RelatedQuestion[]> {
     const currentKeywords = extractKeywords(currentQuestion.title + ' ' + currentQuestion.content);
-
+    
     const scoredQuestions: RelatedQuestion[] = allQuestions
         .filter(q => q.id !== currentQuestion.id) // Exclude current question
         .map(question => {
             let score = 0;
-
+            
             // Category match (highest priority)
             if (question.category === currentQuestion.category) {
                 score += 10;
             }
-
+            
             // Keyword overlap
             const questionKeywords = extractKeywords(question.title + ' ' + question.content);
             const overlap = calculateKeywordOverlap(currentKeywords, questionKeywords);
             score += overlap * 3;
-
+            
             // Recency bonus (questions from last 7 days get a boost)
             if (question.createdAt?.toDate) {
                 const daysOld = (Date.now() - question.createdAt.toDate().getTime()) / (1000 * 60 * 60 * 24);
@@ -99,17 +104,17 @@ export async function findRelatedQuestions(
                     score += Math.max(0, 5 - daysOld);
                 }
             }
-
+            
             // Engagement bonus
             score += Math.min(question.answerCount * 0.5, 5);
             score += Math.min(question.flowerCount * 0.2, 3);
-
+            
             return { question, score };
         })
         .filter(rq => rq.score > 0) // Only include questions with some relevance
         .sort((a, b) => b.score - a.score)
         .slice(0, maxResults);
-
+        
     return scoredQuestions;
 }
 
@@ -119,7 +124,7 @@ export function getRelatedTiles(
 ): { left: Question[], right: Question[] } {
     const left: Question[] = [];
     const right: Question[] = [];
-
+    
     relatedQuestions.forEach((rq, index) => {
         if (index % 2 === 0) {
             left.push(rq.question);
@@ -129,4 +134,254 @@ export function getRelatedTiles(
     });
 
     return { left, right };
+}
+
+// ==========================================
+// MONOLITH-LITE: TIKTOK STYLE RECOMMENDATION
+// ==========================================
+
+export interface UserAffinityProfile {
+    categoryWeights: { [category: string]: number };
+    authorWeights: { [authorId: string]: number };
+    keywordWeights: { [keyword: string]: number };
+    seenQuestions: string[];
+}
+
+const AFFINITY_STORAGE_KEY = 'alonit_user_affinities';
+const MAX_SEEN_HISTORY = 100; // Keep track of last 100 seen questions
+
+// Get local affinity profile
+export function getStoredAffinities(): UserAffinityProfile {
+    if (typeof window === 'undefined') {
+        return { categoryWeights: {}, authorWeights: {}, keywordWeights: {}, seenQuestions: [] };
+    }
+    
+    try {
+        const stored = localStorage.getItem(AFFINITY_STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            return {
+                categoryWeights: parsed.categoryWeights || {},
+                authorWeights: parsed.authorWeights || {},
+                keywordWeights: parsed.keywordWeights || {},
+                seenQuestions: parsed.seenQuestions || []
+            };
+        }
+    } catch (e) {
+        console.error("Error reading affinities", e);
+    }
+    
+    return { categoryWeights: {}, authorWeights: {}, keywordWeights: {}, seenQuestions: [] };
+}
+
+// Save local affinity profile
+function saveStoredAffinities(profile: UserAffinityProfile) {
+    if (typeof window === 'undefined') return;
+    try {
+        localStorage.setItem(AFFINITY_STORAGE_KEY, JSON.stringify(profile));
+    } catch (e) {
+        console.error("Error saving affinities", e);
+    }
+}
+
+export type InteractionType = 'view' | 'like' | 'dislike' | 'answer' | 'share';
+
+/**
+ * Updates the local user affinity profile based on interaction type and watch time (if 'view').
+ */
+export function trackInteraction(question: Question, type: InteractionType, durationMs: number = 0) {
+    if (!question) return;
+    
+    const profile = getStoredAffinities();
+    let weightDelta = 0;
+    
+    switch (type) {
+        case 'view':
+            // "Short View" penalty vs "Long View" reward
+            if (durationMs < 2000) {
+                weightDelta = -1; // Skipped quickly
+            } else if (durationMs >= 3000 && durationMs < 10000) {
+                weightDelta = 1; // Watched normally
+            } else if (durationMs >= 10000) {
+                weightDelta = 3; // Deep engagement (read long content)
+            }
+            break;
+        case 'like':
+            weightDelta = 5;
+            break;
+        case 'dislike':
+            weightDelta = -5;
+            break;
+        case 'answer':
+            weightDelta = 10;
+            break;
+        case 'share':
+            weightDelta = 10;
+            break;
+    }
+
+    if (weightDelta !== 0) {
+        // Update category weight
+        if (question.category) {
+            profile.categoryWeights[question.category] = (profile.categoryWeights[question.category] || 0) + weightDelta;
+            // Prevent going below -10 or above 100 for balance
+            profile.categoryWeights[question.category] = Math.max(-10, Math.min(100, profile.categoryWeights[question.category]));
+        }
+        
+        // Update author weight (if not anonymous)
+        if (question.authorId && question.authorId !== 'anonymous') {
+            profile.authorWeights[question.authorId] = (profile.authorWeights[question.authorId] || 0) + (weightDelta * 0.5); 
+            // Authors weight is slightly less aggressive than category
+        }
+        
+        // Update keyword weights (TF-IDF style vector)
+        const keywords = extractKeywords(question.title + ' ' + (question.content || ''));
+        keywords.forEach(kw => {
+            profile.keywordWeights[kw] = (profile.keywordWeights[kw] || 0) + (weightDelta * 0.2); // Smaller increments for words
+            profile.keywordWeights[kw] = Math.max(-5, Math.min(20, profile.keywordWeights[kw])); // Cap word influence
+        });
+    }
+    
+    // Add to seen history if not already there
+    if (!profile.seenQuestions.includes(question.id)) {
+        profile.seenQuestions.push(question.id);
+        if (profile.seenQuestions.length > MAX_SEEN_HISTORY) {
+            profile.seenQuestions.shift(); // Remove oldest
+        }
+    }
+    
+    saveStoredAffinities(profile);
+}
+
+// Add function to track generic events
+export function trackEvent(
+    type: 'SEARCH' | 'VIEW_PROFILE' | 'ASK_QUESTION', 
+    data: { category?: string, keywords?: string, authorId?: string }
+) {
+    const profile = getStoredAffinities();
+    
+    // Process keyword additions
+    if (data.keywords) {
+        let weight = 0;
+        if (type === 'SEARCH') weight = 2; // Searching for it shows high intent
+        else if (type === 'ASK_QUESTION') weight = 10; // Asking about it shows extremely high intent
+        
+        if (weight > 0) {
+            const words = extractKeywords(data.keywords);
+            words.forEach(kw => {
+                profile.keywordWeights[kw] = (profile.keywordWeights[kw] || 0) + weight;
+                profile.keywordWeights[kw] = Math.max(-5, Math.min(20, profile.keywordWeights[kw]));
+            });
+        }
+    }
+
+    if (data.category && type === 'ASK_QUESTION') {
+        profile.categoryWeights[data.category] = (profile.categoryWeights[data.category] || 0) + 15;
+        // Prevent going below -10 or above 100 for balance
+        profile.categoryWeights[data.category] = Math.max(-10, Math.min(100, profile.categoryWeights[data.category]));
+    }
+
+    if (data.authorId && type === 'VIEW_PROFILE' && data.authorId !== 'anonymous') {
+        profile.authorWeights[data.authorId] = (profile.authorWeights[data.authorId] || 0) + 2;
+    }
+    
+    saveStoredAffinities(profile);
+}
+
+/**
+ * Ranks a pool of questions using the Monolith-Lite algorithm:
+ * - Exploitation Phase: Score based on local affinity profile.
+ * - Exploration Phase: Inject random/low-affinity questions for discovery.
+ */
+export function rankFeedForUser(pool: Question[]): Question[] {
+    const profile = getStoredAffinities();
+    
+    // 1. Score all questions in pool
+    const scoredPool = pool.map(question => {
+        let score = 0;
+        
+        // --- BASE SCORE (Global Quality & Relevance) --- //
+        // Base Engagement
+        score += Math.min((question.answerCount || 0) * 1, 10);
+        score += Math.min((question.flowerCount || 0) * 0.5, 5);
+        
+        // Base Recency (up to 10 points)
+        if (question.createdAt?.toDate) {
+            const daysOld = (Date.now() - question.createdAt.toDate().getTime()) / (1000 * 60 * 60 * 24);
+            if (daysOld < 3) score += 10;
+            else if (daysOld < 7) score += 5;
+            else if (daysOld < 14) score += 2;
+        }
+
+        // --- AFFINITY SCORE (Personalization / Exploitation) --- //
+        if (question.category && profile.categoryWeights[question.category]) {
+            score += profile.categoryWeights[question.category] * 2; // Strong factor
+        }
+        
+        if (question.authorId && profile.authorWeights[question.authorId]) {
+            score += profile.authorWeights[question.authorId];
+        }
+
+        // Feature Vector Dot Product (Keyword similarity)
+        const qKeywords = extractKeywords(question.title + ' ' + (question.content || ''));
+        let keywordScore = 0;
+        qKeywords.forEach(kw => {
+            if (profile.keywordWeights[kw]) {
+                keywordScore += profile.keywordWeights[kw];
+            }
+        });
+        score += keywordScore;
+
+        // --- SEEN PENALTY --- //
+        // If seen recently, heavily penalize so they don't see it twice in the same session
+        if (profile.seenQuestions.includes(question.id)) {
+            score -= 100; // Almost guarantee it goes to the bottom
+        }
+
+        return { question, score, rand: Math.random() };
+    });
+
+    // 2. Separate into Exploitation and Exploration Sets
+    // Filter out seen (-100 score threshold broadly) as best we can, unless pool is empty
+    const unseenScored = scoredPool.filter(s => s.score > -50).sort((a, b) => b.score - a.score);
+    
+    // If we don't have enough unseen, just use everything sorted
+    if (unseenScored.length < 5) {
+        return scoredPool.sort((a, b) => b.score - a.score).map(s => s.question);
+    }
+
+    const totalNeeded = unseenScored.length;
+    const exploitationCount = Math.floor(totalNeeded * 0.7); // 70% Exploitation
+    
+    // Top 70% by score 
+    const exploitationItems = unseenScored.slice(0, exploitationCount);
+    const exploitationIds = new Set(exploitationItems.map(i => i.question.id));
+    
+    // Remaining are potential exploration items (not in the top 70%)
+    // Sort randomly to inject serendipity
+    const explorationItems = unseenScored
+        .filter(i => !exploitationIds.has(i.question.id))
+        .sort((a, b) => a.rand - b.rand); // Randomize
+
+    // 3. Mix the Feed
+    const mixedFeed: Question[] = [];
+    let expIndex = 0;
+    let exporIndex = 0;
+    
+    // Every 3 items: 2 Exploitation, 1 Exploration (roughly 66-33 mix)
+    for (let i = 0; i < totalNeeded; i++) {
+        if ((i + 1) % 3 === 0 && exporIndex < explorationItems.length) {
+            mixedFeed.push(explorationItems[exporIndex].question);
+            exporIndex++;
+        } else if (expIndex < exploitationItems.length) {
+            mixedFeed.push(exploitationItems[expIndex].question);
+            expIndex++;
+        } else if (exporIndex < explorationItems.length) {
+            // Fallback if exploitation is empty
+            mixedFeed.push(explorationItems[exporIndex].question);
+            exporIndex++;
+        }
+    }
+
+    return mixedFeed;
 }

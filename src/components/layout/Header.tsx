@@ -8,6 +8,7 @@ import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/fire
 import { db } from '@/lib/firebase';
 import { AppLogo } from '@/components/ui/AppLogo';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { trackEvent } from '@/services/recommendation.service';
 
 export function Header() {
     const { user, userProfile, loading: authLoading } = useAuth();
@@ -76,6 +77,11 @@ export function Header() {
                             type="search"
                             placeholder="חפש..."
                             className="w-full bg-gray-900/50 border border-gray-700 rounded-full py-2 pr-9 pl-4 text-sm focus:bg-black focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-white placeholder:text-gray-500"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                    trackEvent('SEARCH', { keywords: e.currentTarget.value });
+                                }
+                            }}
                         />
                     </div>
                 </div>

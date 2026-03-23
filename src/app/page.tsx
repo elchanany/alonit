@@ -5,7 +5,7 @@ import { collection, query, orderBy, limit, onSnapshot, startAfter, getDocs, Doc
 import { db } from '@/lib/firebase';
 import { QuestionCard } from '@/components/features/QuestionCard';
 import { RelatedQuestionsTiles } from '@/components/features/RelatedQuestionsTiles';
-import { findRelatedQuestions, getRelatedTiles, Question as RecommendationQuestion } from '@/services/recommendation.service';
+import { findRelatedQuestions, getRelatedTiles, Question as RecommendationQuestion, rankFeedForUser, trackInteraction } from '@/services/recommendation.service';
 import { useAuth } from '@/context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
@@ -35,11 +35,12 @@ export default function Home() {
     const [rightTiles, setRightTiles] = useState<RecommendationQuestion[]>([]);
     const { user } = useAuth();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const questionStartTimeRef = useRef<number>(Date.now());
     const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const INITIAL_LOAD = 10;
-    const LOAD_MORE_COUNT = 10;
+    const INITIAL_LOAD = 30; // Increased pool for personalized ranking
+    const LOAD_MORE_COUNT = 30;
 
     // Initial load - just first batch
     useEffect(() => {
@@ -55,7 +56,7 @@ export default function Home() {
                         timeAgo: data.createdAt?.toDate ? formatDistanceToNow(data.createdAt.toDate(), { addSuffix: true, locale: he }) : 'עכשיו'
                     } as Question;
                 });
-                setQuestions(docs);
+                setQuestions(rankFeedForUser(docs as any) as Question[]); // Rank the pool based on user affinities
                 setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
                 setHasMore(snapshot.docs.length >= INITIAL_LOAD);
                 setLoading(false);
@@ -93,7 +94,7 @@ export default function Home() {
             });
 
             if (newDocs.length > 0) {
-                setQuestions(prev => [...prev, ...newDocs]);
+                setQuestions(prev => [...prev, ...(rankFeedForUser(newDocs as any) as Question[])]);
                 setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
             }
             setHasMore(snapshot.docs.length >= LOAD_MORE_COUNT);
@@ -139,6 +140,19 @@ export default function Home() {
             setLeftTiles(left);
             setRightTiles(right);
         });
+    }, [currentIndex, questions]);
+
+    // Track Watch Time
+    useEffect(() => {
+        questionStartTimeRef.current = Date.now();
+        const currentQ = questions[currentIndex];
+        
+        return () => {
+            if (currentQ) {
+                const duration = Date.now() - questionStartTimeRef.current;
+                trackInteraction(currentQ as any, 'view', duration);
+            }
+        };
     }, [currentIndex, questions]);
 
     // Track scroll to update current index and load more

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Send, Ghost as UserSecret, Tag, Type } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { trackEvent } from '@/services/recommendation.service';
 
 const CATEGORIES = [
     { id: 1, name: 'חברים', icon: '🫂' },
@@ -53,6 +54,11 @@ export default function AskPage() {
                 flowerCount: 0,
                 answerCount: 0,
                 viewCount: 0
+            });
+
+            trackEvent('ASK_QUESTION', { 
+                category: CATEGORIES.find(c => c.id === formData.category)?.name,
+                keywords: formData.title + ' ' + formData.content
             });
 
             router.push('/');
