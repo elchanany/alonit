@@ -142,10 +142,15 @@ export default function Home() {
         });
     }, [currentIndex, questions]);
 
-    // Track Watch Time
+    // Track Watch Time and Sync URL
     useEffect(() => {
         questionStartTimeRef.current = Date.now();
         const currentQ = questions[currentIndex];
+        
+        // Sync URL to match the current question shown
+        if (currentQ && typeof window !== 'undefined') {
+            window.history.replaceState(null, '', `/question/${currentQ.id}`);
+        }
         
         return () => {
             if (currentQ) {
