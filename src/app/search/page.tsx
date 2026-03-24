@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -10,7 +10,7 @@ import { Search } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
 
-export default function SearchPage() {
+function SearchContent() {
     const searchParams = useSearchParams();
     const q = searchParams.get('q') || '';
     
@@ -93,5 +93,17 @@ export default function SearchPage() {
                 
             </div>
         </div>
+    );
+}
+
+export default function SearchPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-gray-950 text-white p-8 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
+            </div>
+        }>
+            <SearchContent />
+        </Suspense>
     );
 }

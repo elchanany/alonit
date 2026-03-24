@@ -65,6 +65,9 @@ export interface UserProfile {
     username?: string; // Public handle
     googleName?: string; // Private real name from Google
     isProfileCompleted?: boolean;
+    bioImageUrl?: string; // Bio attached image/GIF
+    bioAudioUrl?: string; // Bio attached voice presentation
+    bioAudioDuration?: number; // Duration of attached voice
 }
 
 // דרישות לכל רמה

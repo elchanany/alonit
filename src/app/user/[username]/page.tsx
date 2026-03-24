@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, limit, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { MessageCircle, ArrowRight, Settings, Heart, LogOut } from 'lucide-react';
+import { MessageCircle, ArrowRight, Settings, Heart, LogOut, Edit2, Mic } from 'lucide-react';
 import Link from 'next/link';
 import { trackEvent } from '@/services/recommendation.service';
+import BioEditor from '@/components/profile/BioEditor';
+import AudioPlayer from '@/components/chat/AudioPlayer';
+import { useToast } from '@/context/ToastContext';
 
 interface UserProfile {
     id: string;
@@ -15,6 +18,9 @@ interface UserProfile {
     email?: string;
     photoURL?: string;
     bio?: string;
+    bioImageUrl?: string;
+    bioAudioUrl?: string;
+    bioAudioDuration?: number;
     flowerCount: number;
     questionCount: number;
     answerCount: number;
@@ -33,11 +39,77 @@ export default function UserProfilePage() {
     const router = useRouter();
     const username = params.username as string;
     const { user, signOut } = useAuth();
+    const { showToast } = useToast();
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [questions, setQuestions] = useState<UserQuestion[]>([]);
     const [loading, setLoading] = useState(true);
     const [isOwnProfile, setIsOwnProfile] = useState(false);
+    
+    const [isEditingBio, setIsEditingBio] = useState(false);
+
+    const handleSaveBio = async (bioData: { text: string; imageUrl: string; audioUrl: string; audioDuration: number }) => {
+        if (!user) return;
+        try {
+            await updateDoc(doc(db, 'users', user.uid), {
+                bio: bioData.text,
+                bioImageUrl: bioData.imageUrl,
+                bioAudioUrl: bioData.audioUrl,
+                bioAudioDuration: bioData.audioDuration
+            });
+            if (profile) {
+                setProfile({
+                    ...profile,
+                    bio: bioData.text,
+                    bioImageUrl: bioData.imageUrl,
+                    bioAudioUrl: bioData.audioUrl,
+                    bioAudioDuration: bioData.audioDuration
+                });
+            }
+            setIsEditingBio(false);
+            showToast('הביו עודכן בהצלחה', 'success');
+        } catch (error) {
+            console.error('Error saving bio:', error);
+            showToast('שגיאה בשמירת הביו', 'error');
+        }
+    };
+
+    const getMembershipDuration = (dateStringOrObj: any) => {
+        if (!dateStringOrObj) return '';
+        const date = dateStringOrObj.seconds ? dateStringOrObj.toDate() : new Date(dateStringOrObj);
+        const now = new Date();
+        const totalDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (totalDays === 0) return 'הצטרף/ה היום 🌟';
+        
+        if (totalDays >= 365) {
+            const years = Math.floor(totalDays / 365);
+            const remainingDays = totalDays % 365;
+            if (remainingDays > 0) return `הצטרף/ה לפני ${years} שנים ו-${remainingDays} ימים`;
+            return `הצטרף/ה לפני ${years} שנים`;
+        }
+        
+        if (totalDays >= 30) {
+            const months = Math.floor(totalDays / 30);
+            const remainingDays = totalDays % 30;
+            if (remainingDays > 0) return `הצטרף/ה לפני ${months} חודשים ו-${remainingDays} ימים`;
+            return `הצטרף/ה לפני ${months} חודשים`;
+        }
+        
+        return `הצטרף/ה לפני ${totalDays} ימים`;
+    };
+
+    const renderTextWithLinks = (text: string) => {
+        if (!text) return null;
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const parts = text.split(urlRegex);
+        return parts.map((part, i) => {
+            if (part.match(urlRegex)) {
+                return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 underline font-semibold" onClick={(e) => e.stopPropagation()}>{part}</a>;
+            }
+            return part;
+        });
+    };
 
     useEffect(() => {
         if (profile?.id && user?.uid !== profile.id && !isOwnProfile) {
@@ -62,6 +134,9 @@ export default function UserProfilePage() {
                             email: user.email || undefined,
                             photoURL: userData.photoURL || user.photoURL || undefined,
                             bio: userData.bio || '',
+                            bioImageUrl: userData.bioImageUrl || '',
+                            bioAudioUrl: userData.bioAudioUrl || '',
+                            bioAudioDuration: userData.bioAudioDuration || 0,
                             flowerCount: userData.flowerCount || 0,
                             questionCount: userData.questionCount || 0,
                             answerCount: userData.answerCount || 0,
@@ -76,6 +151,9 @@ export default function UserProfilePage() {
                             email: user.email || undefined,
                             photoURL: user.photoURL || undefined,
                             bio: '',
+                            bioImageUrl: '',
+                            bioAudioUrl: '',
+                            bioAudioDuration: 0,
                             flowerCount: 0,
                             questionCount: 0,
                             answerCount: 0,
@@ -142,6 +220,9 @@ export default function UserProfilePage() {
                                 displayName: questionData.authorName,
                                 photoURL: questionData.authorPhoto || undefined,
                                 bio: '',
+                                bioImageUrl: '',
+                                bioAudioUrl: '',
+                                bioAudioDuration: 0,
                                 flowerCount: 0,
                                 questionCount: 0,
                                 answerCount: 0,
@@ -279,19 +360,59 @@ export default function UserProfilePage() {
                         </span>
                     </div>
 
-                    {profile.bio && (
-                        <p className="text-gray-400 mb-4">{profile.bio}</p>
+                    {isEditingBio ? (
+                        <BioEditor
+                            initialBio={profile.bio}
+                            initialImageUrl={profile.bioImageUrl}
+                            initialAudioUrl={profile.bioAudioUrl}
+                            initialAudioDuration={profile.bioAudioDuration}
+                            onSave={handleSaveBio}
+                            onCancel={() => setIsEditingBio(false)}
+                        />
+                    ) : (
+                        <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-5 text-right mb-4 shadow-sm group relative">
+                            {isOwnProfile && (
+                                <button onClick={() => setIsEditingBio(true)} className="absolute top-3 left-3 text-gray-400 hover:text-indigo-400 md:opacity-0 md:group-hover:opacity-100 transition p-2 bg-gray-900/50 rounded-full" title="ערוך ביו">
+                                    <Edit2 size={16} />
+                                </button>
+                            )}
+                            
+                            {(!profile.bio && !profile.bioImageUrl && !profile.bioAudioUrl) ? (
+                                isOwnProfile ? (
+                                    <div className="text-center py-2">
+                                        <p className="text-gray-400 mb-2">לא כתוב עדיין כלום בביו שלך... כדאי לכתוב פרטים על עצמך!</p>
+                                        <button onClick={() => setIsEditingBio(true)} className="text-indigo-400 hover:text-indigo-300 text-sm font-medium">ערוך ביו</button>
+                                    </div>
+                                ) : (
+                                    <p className="text-gray-500 text-center italic">אין עדיין מידע בביו זה.</p>
+                                )
+                            ) : (
+                                <>
+                                    {profile.bio && (
+                                        <p className="text-gray-200 mb-4 whitespace-pre-wrap leading-relaxed">{renderTextWithLinks(profile.bio)}</p>
+                                    )}
+                                    {profile.bioImageUrl && (
+                                        <img src={profile.bioImageUrl} alt="Bio" className="rounded-xl border border-gray-700 max-h-60 mb-4 object-contain shadow-md inline-block max-w-full" />
+                                    )}
+                                    {profile.bioAudioUrl && (
+                                        <div className="bg-gradient-to-r from-indigo-900/50 to-purple-900/50 rounded-xl p-3 border border-indigo-500/30 flex items-center gap-4 max-w-sm ml-auto relative overflow-hidden mt-2">
+                                            <div className="absolute top-0 right-0 w-1 h-full bg-gradient-to-b from-indigo-500 to-purple-500"></div>
+                                            <div className="bg-gray-900 rounded-full p-2 text-indigo-400 flex-shrink-0">
+                                                <Mic size={20} />
+                                            </div>
+                                            <div className="flex-1 w-[160px] xs:w-[200px] overflow-hidden">
+                                                <AudioPlayer src={profile.bioAudioUrl} duration={profile.bioAudioDuration} />
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
                     )}
 
                     {profile.createdAt && (
-                        <p className="text-sm text-gray-500 mb-4">
-                           הצטרף/ה בתאריך: {new Date(profile.createdAt.seconds ? profile.createdAt.toDate() : profile.createdAt).toLocaleString('he-IL', {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                           })}
+                        <p className="text-sm text-gray-500 mb-4 font-medium">
+                           {getMembershipDuration(profile.createdAt)}
                         </p>
                     )}
 
