@@ -16,6 +16,7 @@ interface Question {
     content: string;
     description?: string;
     category: string;
+    tags?: string[];
     authorId: string;
     authorName: string;
     authorPhoto?: string;
@@ -245,6 +246,7 @@ export default function Home() {
                                         viewCount={question.viewCount || 0}
                                         timeAgo={question.timeAgo || 'עכשיו'}
                                         category={question.category}
+                                        tags={question.tags}
                                     />
                                 </div>
                             </div>

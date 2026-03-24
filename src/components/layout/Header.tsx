@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search, Bell, Settings, LogIn, MessageCircle, Shield, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
@@ -12,6 +13,7 @@ import { trackEvent } from '@/services/recommendation.service';
 
 export function Header() {
     const { user, userProfile, loading: authLoading } = useAuth();
+    const router = useRouter();
     const [unreadCount, setUnreadCount] = useState(0);
     const [isAdmin, setIsAdmin] = useState(false);
 
@@ -75,11 +77,12 @@ export function Header() {
                         <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                         <input
                             type="search"
-                            placeholder="חפש..."
+                            placeholder="חפש שאלות, משתמשים, נושאים..."
                             className="w-full bg-gray-900/50 border border-gray-700 rounded-full py-2 pr-9 pl-4 text-sm focus:bg-black focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-white placeholder:text-gray-500"
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && e.currentTarget.value.trim()) {
                                     trackEvent('SEARCH', { keywords: e.currentTarget.value });
+                                    router.push(`/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`);
                                 }
                             }}
                         />

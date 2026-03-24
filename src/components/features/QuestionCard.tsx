@@ -28,6 +28,7 @@ interface QuestionCardProps {
     timeAgo: string;
     createdAt?: any;
     category?: string;
+    tags?: string[];
     trustLevel?: string;
     onDelete?: () => void;
 }
@@ -59,6 +60,7 @@ export function QuestionCard({
     timeAgo,
     createdAt,
     category,
+    tags,
     trustLevel,
     onDelete
 }: QuestionCardProps) {
@@ -766,11 +768,7 @@ export function QuestionCard({
                             </span>
                         </div>
                     </div>
-                    {category && (
-                        <span className="px-3 py-1 bg-gray-900 text-indigo-400 rounded-full text-xs font-medium border border-gray-800">
-                            {category}
-                        </span>
-                    )}
+
 
                     {/* Author Actions Menu */}
                     {(user?.uid === authorId || isAdmin) && (
@@ -838,6 +836,23 @@ export function QuestionCard({
                                 {editContent}
                             </p>
                         </>
+                    )}
+
+                    {/* Tags Display below content */}
+                    {tags && tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 mt-4">
+                            {tags.map((tag, idx) => (
+                                <Link href={`/question?tag=${encodeURIComponent(tag)}`} key={idx} onClick={(e) => { e.stopPropagation(); }} className="px-3 flex items-center justify-center h-8 bg-indigo-900/30 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-800/40 rounded-full text-xs font-medium border border-indigo-500/30 transition-colors">
+                                    #{tag}
+                                </Link>
+                            ))}
+                        </div>
+                    ) : category && (
+                        <div className="flex flex-wrap gap-2 mt-4">
+                            <Link href={`/question?category=${encodeURIComponent(category)}`} onClick={(e) => { e.stopPropagation(); }} className="px-3 flex items-center justify-center h-8 bg-indigo-900/30 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-800/40 rounded-full text-xs font-medium border border-indigo-500/30 transition-colors">
+                                {category}
+                            </Link>
+                        </div>
                     )}
                 </div>
 

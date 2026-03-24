@@ -1,5 +1,8 @@
 import { collection, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import semanticClustersRaw from '@/lib/semantic-clusters.json';
+
+const semanticClusters = semanticClustersRaw as Record<string, string[]>;
 
 // Hebrew stop words to filter out
 const HEBREW_STOP_WORDS = new Set([
@@ -18,6 +21,7 @@ export interface Question {
     content: string;
     description?: string;
     category: string;
+    tags?: string[];
     authorName: string;
     authorId?: string; 
     authorPhoto?: string;
@@ -384,4 +388,97 @@ export function rankFeedForUser(pool: Question[]): Question[] {
     }
 
     return mixedFeed;
+}
+
+/**
+ * Ranks questions based on a search query, using both keyword matching
+ * and the user's affinity profile for personalization.
+ */
+export function searchAndRank(pool: Question[], query: string): Question[] {
+    if (!query || query.trim() === '') return [];
+    
+    const profile = getStoredAffinities();
+    const queryKeywords = extractKeywords(query);
+    
+    // Semantic Expansion: Expand keywords using our local clusters
+    let expandedTerms = [...queryKeywords];
+    queryKeywords.forEach(term => {
+        for (const [clusterId, words] of Object.entries(semanticClusters)) {
+            if (words.includes(term)) {
+                expandedTerms.push(clusterId);
+                words.forEach(w => expandedTerms.push(w));
+            }
+        }
+    });
+    
+    // Deduplicate expanded terms
+    const finalKeywords = Array.from(new Set(expandedTerms));
+    
+    // If no valuable keywords extracted (e.g. only stop words), use the raw string
+    const searchTerms = finalKeywords.length > 0 ? finalKeywords : [query.trim().toLowerCase()];
+
+    const scoredPool = pool.map(question => {
+        let score = 0;
+        
+        const qTitle = (question.title || '').toLowerCase();
+        const qContent = (question.content || '').toLowerCase();
+        const qAuthor = (question.authorName || '').toLowerCase();
+        const qCategory = (question.category || '').toLowerCase();
+
+        // 1. Direct Search Match (Highest priority)
+        let matchCount = 0;
+        searchTerms.forEach(term => {
+            if (qTitle.includes(term)) {
+                score += 50;
+                matchCount++;
+            }
+            if (qContent.includes(term)) {
+                score += 20;
+                matchCount++;
+            }
+            if (qAuthor.includes(term)) {
+                score += 30;
+                matchCount++;
+            }
+            if (qCategory.includes(term)) {
+                score += 30;
+                matchCount++;
+            }
+        });
+
+        // If no match at all, score is negative infinite (filter out)
+        if (matchCount === 0) {
+            return { question, score: -1000 };
+        }
+
+        // 2. Personalization Bonus (Vector Mapping)
+        if (question.category && profile.categoryWeights[question.category]) {
+            score += profile.categoryWeights[question.category] * 0.5; // Slight bonus for liked categories
+        }
+        
+        if (question.authorId && profile.authorWeights[question.authorId]) {
+            score += profile.authorWeights[question.authorId] * 0.5;
+        }
+
+        const qKeywords = extractKeywords(qTitle + ' ' + qContent);
+        let keywordScore = 0;
+        qKeywords.forEach(kw => {
+            if (profile.keywordWeights[kw]) {
+                keywordScore += profile.keywordWeights[kw] * 0.2; // Small bonus for mapped keywords
+            }
+        });
+        score += keywordScore;
+
+        // Base Engagement Bonus
+        score += Math.min((question.answerCount || 0) * 0.5, 5);
+        score += Math.min((question.flowerCount || 0) * 0.2, 5);
+
+        return { question, score };
+    });
+
+    // Filter out non-matches (-1000) and sort by score
+    return scoredPool
+        .filter(s => s.score > -1000)
+        .sort((a, b) => b.score - a.score)
+        .map(s => s.question);
 }
