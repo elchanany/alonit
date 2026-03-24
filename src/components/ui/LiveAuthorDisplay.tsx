@@ -66,9 +66,9 @@ export function LiveAuthorDisplay({
         </div>
     );
 
-    if (linkToProfile && !isAnonymous && authorId) {
+    if (linkToProfile && !isAnonymous && (authorId || displayName)) {
         return (
-            <Link href={`/user/${authorId}`}>
+            <Link href={`/user/${encodeURIComponent(displayName)}`}>
                 {content}
             </Link>
         );

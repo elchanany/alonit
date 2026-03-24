@@ -1,10 +1,12 @@
 'use client';
 
 import { useRef, useCallback, useState, useEffect } from 'react';
-import { X, ChevronDown, Send, Heart, ThumbsDown, Reply, Edit2, Trash2, Flag } from 'lucide-react';
+import { X, ChevronDown, ArrowUp, Heart, ThumbsDown, Reply, Edit2, Trash2, Flag } from 'lucide-react';
 import Link from 'next/link';
 import { LiveAuthorDisplay } from '@/components/ui/LiveAuthorDisplay';
+import { MentionTextarea, MentionTextareaRef } from '@/components/ui/MentionTextarea';
 import { toSmartDate } from '@/utils/hebrewDate';
+import { renderMentions } from '@/utils/mentions';
 
 interface Answer {
     id: string;
@@ -61,6 +63,7 @@ export function AnswersModal({
 }: AnswersModalProps) {
     const answersContainerRef = useRef<HTMLDivElement>(null);
     const overlayRef = useRef<HTMLDivElement>(null);
+    const mentionRef = useRef<MentionTextareaRef>(null);
 
     const [visibleCount, setVisibleCount] = useState(ANSWERS_PER_PAGE);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -127,7 +130,8 @@ export function AnswersModal({
 
         setSubmitting(true);
         try {
-            await onSubmitAnswer(newAnswer.trim(), isAnonymous, replyingTo || undefined);
+            const formattedContent = mentionRef.current?.getFormattedValue() || newAnswer.trim();
+            await onSubmitAnswer(formattedContent, isAnonymous, replyingTo || undefined);
             setNewAnswer('');
             setReplyingTo(null);
             // Scroll to see new answer
@@ -186,12 +190,12 @@ export function AnswersModal({
                     {user ? (
                         <form onSubmit={handleSubmit} className="space-y-3 sticky top-0 z-10 bg-slate-900 pb-3 -mt-1 pt-1">
                             <div className="flex gap-2 items-end">
-                                <textarea
-                                    placeholder="כתוב תשובה..."
+                                <MentionTextarea
+                                    ref={mentionRef}
+                                    placeholder="כתוב תגובה מכבדת (אפשר לתייג עם @)..."
                                     className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500 resize-none min-h-[80px] max-h-[150px]"
                                     value={newAnswer}
-                                    onChange={(e) => setNewAnswer(e.target.value)}
-                                    rows={3}
+                                    onValueChange={setNewAnswer}
                                 />
                                 <button
                                     type="submit"
@@ -201,7 +205,7 @@ export function AnswersModal({
                                     {submitting ? (
                                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                     ) : (
-                                        <Send size={18} />
+                                        <ArrowUp size={18} />
                                     )}
                                 </button>
                             </div>
@@ -291,7 +295,7 @@ export function AnswersModal({
                                     </div>
                                 ) : (
                                     <p className="text-sm text-gray-300 leading-relaxed mb-3 whitespace-pre-wrap break-words">
-                                        {ans.content}
+                                        {renderMentions(ans.content)}
                                     </p>
                                 )}
 

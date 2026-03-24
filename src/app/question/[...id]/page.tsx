@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { getQuestionUrl } from '@/utils/url';
 
 interface Question {
     id: string;
@@ -33,7 +34,7 @@ interface Question {
 export default function QuestionPage() {
     const params = useParams();
     const router = useRouter();
-    const questionId = params.id as string;
+    const questionId = Array.isArray(params.id) ? params.id[0] : params.id as string;
     const { user } = useAuth();
     
     const [questions, setQuestions] = useState<Question[]>([]);
@@ -169,7 +170,8 @@ export default function QuestionPage() {
             
             // Update the browser URL without triggering a page reload
             if (questions[newIndex]) {
-                window.history.replaceState(null, '', `/question/${questions[newIndex].id}`);
+                const q = questions[newIndex];
+                window.history.replaceState(null, '', getQuestionUrl(q.id, q.title));
             }
         }
     }, [currentIndex, questions]);

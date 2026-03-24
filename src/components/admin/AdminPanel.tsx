@@ -281,7 +281,7 @@ export default function AdminPanel() {
                             <StatCard icon="🌳" label="גזעים" value={users.filter(u => u.level === UserLevel.TRUNK).length} color="emerald" />
                             <StatCard icon="🌲" label="אלונים" value={users.filter(u => u.level === UserLevel.OAK).length} color="teal" />
                             <StatCard icon="❓" label="שאלות" value={questionsCount} color="purple" />
-                            <StatCard icon="💬" label="תשובות" value={answersCount} color="blue" />
+                            <StatCard icon="📝" label="תשובות" value={answersCount} color="blue" />
                             <StatCard icon="⭐" label="סה״כ נקודות" value={totalPoints} color="yellow" />
                             <StatCard icon="🌸" label="סה״כ פרחים" value={totalFlowers} color="pink" />
                             <StatCard icon="🚫" label="חסומים" value={users.filter(u => u.isBlocked).length} color="red" />

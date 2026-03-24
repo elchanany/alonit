@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { getQuestionUrl } from '@/utils/url';
 import { collection, query, orderBy, limit, onSnapshot, startAfter, getDocs, DocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { QuestionCard } from '@/components/features/QuestionCard';
@@ -150,7 +151,7 @@ export default function Home() {
         
         // Sync URL to match the current question shown
         if (currentQ && typeof window !== 'undefined') {
-            window.history.replaceState(null, '', `/question/${currentQ.id}`);
+            window.history.replaceState(null, '', getQuestionUrl(currentQ.id, currentQ.title));
         }
         
         return () => {

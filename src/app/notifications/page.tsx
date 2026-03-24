@@ -9,10 +9,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
+import { getQuestionUrl } from '@/utils/url';
 
 interface Notification {
     id: string;
-    type: 'ANSWER' | 'MESSAGE' | 'SYSTEM';
+    type: 'ANSWER' | 'MESSAGE' | 'SYSTEM' | 'MENTION';
     recipientId: string;
     senderId?: string;
     senderName?: string;
@@ -25,11 +26,12 @@ interface Notification {
 }
 
 interface GroupedNotification {
-    type: 'MESSAGE' | 'SYSTEM' | 'ANSWER';
+    type: 'MESSAGE' | 'SYSTEM' | 'ANSWER' | 'MENTION';
     senderId?: string;
     senderName?: string;
     conversationId?: string;
     questionId?: string;
+    questionTitle?: string;
     lastMessage: string;
     unreadCount: number;
     latestTimestamp: any;
@@ -117,14 +119,15 @@ export default function NotificationsPage() {
                     latestTimestamp: latest.createdAt,
                     notifications: relatedNotifs
                 });
-            } else if (notif.type === 'ANSWER') {
-                // Keep answer notifications individual
+            } else if (notif.type === 'ANSWER' || notif.type === 'MENTION') {
+                // Keep answer and mention notifications individual
                 processedIds.add(notif.id);
                 groups.push({
-                    type: 'ANSWER',
+                    type: notif.type,
                     senderId: notif.senderId,
                     senderName: notif.senderName || 'משתמש',
                     questionId: notif.questionId,
+                    questionTitle: notif.questionTitle,
                     lastMessage: notif.message,
                     unreadCount: notif.read ? 0 : 1,
                     latestTimestamp: notif.createdAt,
@@ -178,17 +181,18 @@ export default function NotificationsPage() {
                 console.error('Error finding conversation:', error);
                 router.push('/conversations');
             }
-        } else if (group.type === 'ANSWER' && group.questionId) {
-            router.push(`/question/${group.questionId}`);
+        } else if ((group.type === 'ANSWER' || group.type === 'MENTION') && group.questionId) {
+            router.push(getQuestionUrl(group.questionId, group.questionTitle));
         }
     };
 
     const getIcon = (type: string) => {
         switch (type) {
-            case 'ANSWER': return <MessageCircle size={20} className="text-indigo-400" />;
-            case 'MESSAGE': return <MessageCircle size={20} className="text-pink-400" />;
-            case 'SYSTEM': return <AlertCircle size={20} className="text-orange-400" />;
-            default: return <Bell size={20} className="text-gray-400" />;
+            case 'ANSWER': return <MessageCircle size={12} className="text-indigo-400" />;
+            case 'MENTION': return <User size={12} className="text-cyan-400" />;
+            case 'MESSAGE': return <MessageCircle size={12} className="text-pink-400" />;
+            case 'SYSTEM': return <AlertCircle size={12} className="text-orange-400" />;
+            default: return <Bell size={12} className="text-gray-400" />;
         }
     };
 
@@ -231,42 +235,86 @@ export default function NotificationsPage() {
                             ? formatDistanceToNow(group.latestTimestamp.toDate(), { addSuffix: true, locale: he })
                             : 'עכשיו';
 
-                        return (
-                            <button
-                                key={`${group.type}-${group.senderId || 'system'}-${index}`}
+                            return (
+                                <button
+                                    key={`${group.type}-${group.senderId || 'system'}-${index}`}
                                 onClick={() => handleGroupClick(group)}
-                                className={`w-full text-right p-4 rounded-xl flex gap-3 hover:bg-gray-800/50 transition-colors ${group.unreadCount > 0
-                                        ? 'bg-gray-800/60 border border-indigo-500/30'
-                                        : 'bg-gray-800/30 border border-gray-700/30'
-                                    }`}
+                                className={`w-full text-right p-4 rounded-xl flex gap-4 hover:bg-gray-800/80 transition-all duration-200 group-hover ${
+                                    group.unreadCount > 0
+                                        ? 'bg-indigo-900/20 border border-indigo-500/40 shadow-[0_4px_20px_-4px_rgba(99,102,241,0.15)]'
+                                        : 'bg-gray-800/20 border border-gray-700/50 hover:border-gray-600'
+                                }`}
                             >
                                 {/* Avatar/Icon */}
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                                    {group.type === 'SYSTEM' ? (
-                                        <AlertCircle size={24} className="text-white" />
-                                    ) : (
-                                        <span className="text-white font-bold text-lg">
-                                            {group.senderName?.[0] || '?'}
-                                        </span>
-                                    )}
+                                <div 
+                                    className="relative cursor-pointer hover:opacity-80 transition-opacity"
+                                    onClick={(e) => {
+                                        if (group.type !== 'SYSTEM' && group.senderName) {
+                                            e.stopPropagation();
+                                            router.push(`/user/${group.senderName}`);
+                                        }
+                                    }}
+                                >
+                                    <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 p-0.5 flex-shrink-0">
+                                        <div className="w-full h-full bg-gray-900 rounded-full flex items-center justify-center">
+                                            {group.type === 'SYSTEM' ? (
+                                                <AlertCircle size={22} className="text-white" />
+                                            ) : (
+                                                <span className="text-white font-bold text-lg">
+                                                    {group.senderName?.[0] || '?'}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {/* Small icon badge overlay */}
+                                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-slate-900 flex items-center justify-center border border-gray-700">
+                                        {getIcon(group.type)}
+                                    </div>
                                 </div>
 
                                 {/* Content */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <p className={`text-sm font-bold ${group.unreadCount > 0 ? 'text-white' : 'text-gray-300'}`}>
-                                            {group.senderName}
-                                        </p>
+                                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className={`text-sm ${group.unreadCount > 0 ? 'text-gray-100' : 'text-gray-300'}`}>
+                                            {group.type === 'MENTION' && (
+                                                <p>
+                                                    <span onClick={(e) => { e.stopPropagation(); router.push(`/user/${group.senderName}`); }} className="font-bold text-white hover:underline hover:text-indigo-400 cursor-pointer transition-colors px-1 py-0.5 -mx-1">{group.senderName}</span> תייג אותך בשאלה <span className="font-semibold text-indigo-300">{group.questionTitle}</span>
+                                                </p>
+                                            )}
+                                            {group.type === 'ANSWER' && (
+                                                <p>
+                                                    <span onClick={(e) => { e.stopPropagation(); router.push(`/user/${group.senderName}`); }} className="font-bold text-white hover:underline hover:text-indigo-400 cursor-pointer transition-colors px-1 py-0.5 -mx-1">{group.senderName}</span> כתב תשובה לשאלה שלך <span className="font-semibold text-indigo-300">{group.questionTitle}</span>
+                                                </p>
+                                            )}
+                                            {group.type === 'MESSAGE' && (
+                                                <p>
+                                                    <span onClick={(e) => { e.stopPropagation(); router.push(`/user/${group.senderName}`); }} className="font-bold text-white hover:underline hover:text-indigo-400 cursor-pointer transition-colors px-1 py-0.5 -mx-1">{group.senderName}</span> שלח לך הודעות חדשות בצ'אט
+                                                </p>
+                                            )}
+                                            {group.type === 'SYSTEM' && (
+                                                <p>
+                                                    <span className="font-bold text-orange-400">מערכת:</span> {group.lastMessage}
+                                                </p>
+                                            )}
+                                        </div>
                                         {group.unreadCount > 0 && (
-                                            <span className="bg-indigo-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
-                                                {group.unreadCount}
+                                            <span className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0">
+                                                {group.unreadCount} חדש
                                             </span>
                                         )}
                                     </div>
-                                    <p className={`text-sm mb-1 truncate ${group.unreadCount > 0 ? 'text-gray-300' : 'text-gray-500'}`}>
-                                        {group.lastMessage}
+                                    
+                                    {/* The specific message/preview */}
+                                    {group.type !== 'SYSTEM' && group.lastMessage && (
+                                        <p className={`text-xs mt-1.5 line-clamp-1 border-r-2 border-indigo-500/30 pr-2 ${group.unreadCount > 0 ? 'text-gray-300' : 'text-gray-500'}`}>
+                                            "{group.lastMessage}"
+                                        </p>
+                                    )}
+                                    
+                                    <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1.5 opacity-80">
+                                        <span>•</span>
+                                        {timeAgo}
                                     </p>
-                                    <p className="text-xs text-gray-500">{timeAgo}</p>
                                 </div>
                             </button>
                         );

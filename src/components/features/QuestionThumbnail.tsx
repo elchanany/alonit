@@ -1,5 +1,8 @@
 import React from 'react';
 import Link from 'next/link';
+import { formatDistanceToNow } from 'date-fns';
+import { he } from 'date-fns/locale';
+import { getQuestionUrl } from '@/utils/url';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { Heart, MessageCircle } from 'lucide-react';
 import { Question } from '@/services/recommendation.service';
@@ -10,7 +13,7 @@ interface QuestionThumbnailProps {
 
 export function QuestionThumbnail({ question }: QuestionThumbnailProps) {
     return (
-        <Link href={`/question/${question.id}`} className="block relative w-full aspect-[3/4] rounded-lg overflow-hidden group border border-gray-700 hover:border-indigo-500 transition-all bg-gray-900">
+        <Link href={getQuestionUrl(question.id, question.title)} className="block relative w-full aspect-[3/4] rounded-lg overflow-hidden group border border-gray-700 hover:border-indigo-500 transition-all bg-gray-900">
             {/* Background gradient abstract cover matching standard TikTok text-video style */}
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/80 via-purple-900/80 to-gray-900 opacity-80 group-hover:scale-105 transition-transform duration-500"></div>
             

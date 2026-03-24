@@ -1,11 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Ghost as UserSecret, Tag, Type, Hash, PlusCircle, X } from 'lucide-react';
+import { ArrowUp, Ghost as UserSecret, Tag, Type, Hash, PlusCircle, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { trackEvent, extractKeywords } from '@/services/recommendation.service';
+import { MentionTextarea, MentionTextareaRef } from '@/components/ui/MentionTextarea';
+import { extractMentions } from '@/utils/mentions';
+import { getQuestionUrl } from '@/utils/url';
+import { g } from '@/utils/gender';
 
 import semanticClustersRaw from '@/lib/semantic-clusters.json';
 const semanticClusters = semanticClustersRaw as Record<string, string[]>;
@@ -32,6 +36,7 @@ export default function AskPage() {
     const { showToast } = useToast();
     const [step, setStep] = useState(1);
     const [submitting, setSubmitting] = useState(false);
+    const mentionRef = useRef<MentionTextareaRef>(null);
     const [formData, setFormData] = useState({
         tags: [] as string[],
         title: '',
@@ -102,12 +107,14 @@ export default function AskPage() {
 
         setSubmitting(true);
         try {
-            const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+            const { collection, addDoc, serverTimestamp, getDocs } = await import('firebase/firestore');
             const { db } = await import('@/lib/firebase');
+
+            const formattedContent = mentionRef.current?.getFormattedValue() || formData.content;
 
             const docRef = await addDoc(collection(db, 'questions'), {
                 title: formData.title,
-                content: formData.content,
+                content: formattedContent,
                 category: formData.tags.length > 0 ? formData.tags[0] : 'כללי',
                 tags: formData.tags,
                 isAnonymous: formData.isAnonymous,
@@ -122,10 +129,36 @@ export default function AskPage() {
 
             trackEvent('ASK_QUESTION', { 
                 category: formData.tags.length > 0 ? formData.tags[0] : 'כללי',
-                keywords: formData.tags.join(' ') + ' ' + formData.title + ' ' + formData.content
+                keywords: formData.tags.join(' ') + ' ' + formData.title + ' ' + formattedContent
             });
 
-            router.push(`/question/${docRef.id}`);
+            // Send mention notifications
+            const mentions = extractMentions(formattedContent);
+            if (mentions.length > 0) {
+                try {
+                    const usersSnap = await getDocs(collection(db, 'users'));
+                    for (const mentionName of mentions) {
+                        const mentionedUser = usersSnap.docs.find(d => d.data().displayName?.toLowerCase() === mentionName.toLowerCase());
+                        if (mentionedUser && mentionedUser.id !== user.uid) {
+                            await addDoc(collection(db, 'notifications'), {
+                                type: 'MENTION',
+                                recipientId: mentionedUser.id,
+                                senderId: user.uid,
+                                senderName: user.displayName || 'משתמש',
+                                questionId: docRef.id,
+                                questionTitle: formData.title,
+                                message: formattedContent,
+                                read: false,
+                                createdAt: serverTimestamp()
+                            });
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error sending mention notifications for question:', err);
+                }
+            }
+
+            router.push(getQuestionUrl(docRef.id, formData.title));
         } catch (error) {
             console.error("Error adding document: ", error);
             alert("אירעה שגיאה בפרסום השאלה. נסה שוב.");
@@ -133,7 +166,7 @@ export default function AskPage() {
         }
     };
 
-    const { user, isVerified, loading, resendVerification } = useAuth();
+    const { user, userProfile, isVerified, loading, resendVerification } = useAuth();
 
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-indigo-950 to-gray-900 text-white">טוען...</div>;
 
@@ -224,11 +257,12 @@ export default function AskPage() {
                             <div className="mt-4">
                                 <label className="block text-sm font-medium text-gray-300 mb-2">פירוט (מינימום 20 תווים)</label>
                                 <div className="relative">
-                                    <textarea
+                                    <MentionTextarea
+                                        ref={mentionRef}
                                         value={formData.content}
-                                        onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                                        onValueChange={(val) => setFormData({ ...formData, content: val })}
                                         className={`w-full p-4 bg-gray-800/50 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-32 resize-none text-white placeholder:text-gray-500 transition-colors ${formData.content.length > 0 && formData.content.trim().length < 20 ? 'border-red-500/50' : 'border-gray-700 focus:border-transparent'}`}
-                                        placeholder="פרט ככל הניתן כדי לקבל תשובות מדויקות..."
+                                        placeholder="פרט ככל הניתן כדי לקבל תשובות מדויקות (אפשר לתייג עם @)..."
                                     />
                                     {formData.content.length > 0 && formData.content.trim().length < 20 && (
                                         <p className="text-red-400 text-xs mt-1 absolute -bottom-5 right-0">חסרים עוד {20 - formData.content.trim().length} תווים</p>
@@ -242,7 +276,7 @@ export default function AskPage() {
                                     className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-medium flex items-center justify-center gap-3 transition-all duration-300 hover:bg-indigo-500 hover:shadow-[0_0_20px_rgba(99,102,241,0.5)] disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
                                 >
                                     המשך לשלב הבא
-                                    <Send size={18} className="rotate-180" />
+                                                                        <ArrowUp size={18} className="rotate-180" />
                                 </button>
                             </div>
                         </div>
@@ -378,7 +412,7 @@ export default function AskPage() {
                                     className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-medium flex items-center justify-center gap-3 transition-all duration-300 hover:bg-indigo-500 hover:shadow-[0_0_20px_rgba(99,102,241,0.5)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none w-full md:w-auto"
                                 >
                                     המשך לשלב הבא
-                                    <Send size={18} className="rotate-180" />
+                                                                        <ArrowUp size={18} className="rotate-180" />
                                 </button>
                             </div>
                         </div>
@@ -418,8 +452,8 @@ export default function AskPage() {
                                         </>
                                     ) : (
                                         <>
-                                            <Send size={18} />
-                                            פרסם שאלה
+                                            <ArrowUp size={18} />
+                                            {g(userProfile?.gender, 'ask')} שאלה
                                         </>
                                     )}
                                 </button>

@@ -53,7 +53,6 @@ export function MobileNav() {
         );
     }
 
-    // Nav item component
     const NavItem = ({ href, icon: Icon, label, badge }: { href: string; icon: any; label?: string; badge?: number }) => (
         <Link
             href={href}
@@ -61,9 +60,9 @@ export function MobileNav() {
                 }`}
         >
             <div className="relative">
-                <Icon size={22} strokeWidth={isActive(href) ? 2.5 : 2} />
+                <Icon size={26} strokeWidth={isActive(href) ? 2.5 : 2} />
                 {badge && badge > 0 && (
-                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    <div className={`absolute top-0 right-0 translate-x-1/3 -translate-y-1/3 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-[#312e81] shadow-sm z-10 ${badge > 9 ? 'px-1 min-w-[20px] h-[20px]' : 'w-[20px] h-[20px]'}`}>
                         {badge > 9 ? '9+' : badge}
                     </div>
                 )}

@@ -598,7 +598,7 @@ export default function ChatPage() {
                         recipientId: otherParticipantId,
                         senderId: user.uid,
                         senderName: user.displayName || 'משתמש',
-                        message: `הודעה חדשה מ-${user.displayName || 'משתמש'}`,
+                        message: messageData.content,
                         read: false,
                         createdAt: serverTimestamp()
                     }));
@@ -937,7 +937,7 @@ export default function ChatPage() {
                     >
                         {messages.length === 0 && (
                             <div className="text-center text-gray-500 py-8">
-                                <p>אין הודעות עדיין. שלח הודעה ראשונה! 💬</p>
+                                <p>אין הודעות עדיין. שלח הודעה ראשונה! ✉️</p>
                             </div>
                         )}
 

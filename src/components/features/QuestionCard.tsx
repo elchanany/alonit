@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, Send, Edit2, MoreVertical, X, ShieldAlert, ChevronDown } from 'lucide-react';
+import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, ArrowUp, Edit2, MoreVertical, X, ShieldAlert, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, updateDoc, increment, collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -12,8 +12,11 @@ import { UserProfile, UserRole, UserLevel, LEVEL_PERMISSIONS } from '@/types/use
 import { logDeleteQuestion, logDeleteAnswer, logEditQuestion, logEditAnswer, logBlockUser } from '@/services/admin-actions.service';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { LiveAuthorDisplay } from '@/components/ui/LiveAuthorDisplay';
+import { MentionTextarea, MentionTextareaRef } from '@/components/ui/MentionTextarea';
 import { toSmartDate } from '@/utils/hebrewDate';
 import { trackInteraction, Question as RecQuestion } from '@/services/recommendation.service';
+import { renderMentions, extractMentions } from '@/utils/mentions';
+import { g } from '@/utils/gender';
 
 interface QuestionCardProps {
     id: string;
@@ -92,6 +95,7 @@ export function QuestionCard({
     // Refs for scroll and click-outside
     const answersContainerRef = useRef<HTMLDivElement>(null);
     const answersSectionRef = useRef<HTMLDivElement>(null);
+    const mentionRef = useRef<MentionTextareaRef>(null);
 
     // Admin State
     const [showAdminModal, setShowAdminModal] = useState(false);
@@ -516,8 +520,9 @@ export function QuestionCard({
 
         setSubmitting(true);
         try {
+            const formattedContent = mentionRef.current?.getFormattedValue() || newAnswer.trim();
             const answerData: any = {
-                content: newAnswer.trim(),
+                content: formattedContent,
                 authorId: isAnonymousAnswer ? 'anonymous' : user.uid,
                 authorName: isAnonymousAnswer ? 'אנונימי' : (user.displayName || 'משתמש'),
                 // Always save real author info for admin access
@@ -549,6 +554,51 @@ export function QuestionCard({
             fetchAllAnswers();
             trackInteraction(questObj, 'answer');
             showToast('התשובה נשלחה בהצלחה', 'success');
+
+            // Send notify to question author (if not self)
+            if (authorId && authorId !== user.uid) {
+                try {
+                    await addDoc(collection(db, 'notifications'), {
+                        type: 'ANSWER',
+                        recipientId: authorId,
+                        senderId: user.uid,
+                        senderName: user.displayName || 'משתמש',
+                        questionId: id,
+                        questionTitle: title,
+                        message: formattedContent,
+                        read: false,
+                        createdAt: serverTimestamp()
+                    });
+                } catch (err) {
+                    console.error('Error sending answer notification:', err);
+                }
+            }
+
+            // Send mention notifications
+            const mentions = extractMentions(formattedContent);
+            if (mentions.length > 0) {
+                try {
+                    const usersSnap = await getDocs(collection(db, 'users'));
+                    for (const mentionName of mentions) {
+                        const mentionedUser = usersSnap.docs.find(d => d.data().displayName?.toLowerCase() === mentionName.toLowerCase());
+                        if (mentionedUser && mentionedUser.id !== user.uid) {
+                            await addDoc(collection(db, 'notifications'), {
+                                type: 'MENTION',
+                                recipientId: mentionedUser.id,
+                                senderId: user.uid,
+                                senderName: user.displayName || 'משתמש',
+                                questionId: id,
+                                questionTitle: title,
+                                message: formattedContent,
+                                read: false,
+                                createdAt: serverTimestamp()
+                            });
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error sending mention notifications:', err);
+                }
+            }
         } catch (error: any) {
             console.error('Error submitting answer:', error);
             showToast('שגיאה בשליחת התשובה: ' + (error.message || 'נסה שוב'), 'error');
@@ -748,7 +798,7 @@ export function QuestionCard({
                 {/* Header: Author & Rank */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <Link href={displayAuthorName === 'אנונימי' ? '#' : '/user/' + (authorId || displayAuthorName)}>
+                        <Link href={displayAuthorName === 'אנונימי' ? '#' : '/user/' + encodeURIComponent(displayAuthorName)}>
                             <UserAvatar
                                 src={displayAuthorPhoto}
                                 name={displayAuthorName}
@@ -758,7 +808,7 @@ export function QuestionCard({
                         </Link>
                         <div>
                             <div className="flex items-center gap-2">
-                                <Link href={displayAuthorName === 'אנונימי' ? '#' : '/user/' + (authorId || displayAuthorName)} className="font-bold text-sm text-white hover:text-indigo-400 transition-colors">
+                                <Link href={displayAuthorName === 'אנונימי' ? '#' : '/user/' + encodeURIComponent(displayAuthorName)} className="font-bold text-sm text-white hover:text-indigo-400 transition-colors">
                                     {displayAuthorName}
                                 </Link>
                                 {getRankBadge(trustLevel)}
@@ -833,23 +883,23 @@ export function QuestionCard({
                         <>
                             <h2 className="text-lg sm:text-xl font-bold mb-2 sm:mb-3 leading-tight text-white">{editTitle}</h2>
                             <p className={`text-gray-300 text-sm sm:text-base leading-relaxed whitespace-pre-wrap pl-2 sm:pl-4 border-l-2 border-indigo-500/50 cursor-pointer ${expanded ? '' : 'line-clamp-3 sm:line-clamp-4'}`} onClick={toggleExpanded}>
-                                {editContent}
+                                {renderMentions(editContent)}
                             </p>
                         </>
                     )}
 
                     {/* Tags Display below content */}
                     {tags && tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-2 mt-4">
+                        <div className="flex flex-wrap gap-1.5 mt-3">
                             {tags.map((tag, idx) => (
-                                <Link href={`/question?tag=${encodeURIComponent(tag)}`} key={idx} onClick={(e) => { e.stopPropagation(); }} className="px-3 flex items-center justify-center h-8 bg-indigo-900/30 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-800/40 rounded-full text-xs font-medium border border-indigo-500/30 transition-colors">
+                                <Link href={`/search?q=${encodeURIComponent(tag)}`} key={idx} onClick={(e) => { e.stopPropagation(); }} className="px-2 py-0.5 bg-indigo-900/20 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-800/30 rounded-md text-[11px] font-medium border border-indigo-500/20 transition-colors">
                                     #{tag}
                                 </Link>
                             ))}
                         </div>
                     ) : category && (
-                        <div className="flex flex-wrap gap-2 mt-4">
-                            <Link href={`/question?category=${encodeURIComponent(category)}`} onClick={(e) => { e.stopPropagation(); }} className="px-3 flex items-center justify-center h-8 bg-indigo-900/30 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-800/40 rounded-full text-xs font-medium border border-indigo-500/30 transition-colors">
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                            <Link href={`/search?q=${encodeURIComponent(category)}`} onClick={(e) => { e.stopPropagation(); }} className="px-2 py-0.5 bg-indigo-900/20 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-800/30 rounded-md text-[11px] font-medium border border-indigo-500/20 transition-colors">
                                 {category}
                             </Link>
                         </div>
@@ -901,7 +951,7 @@ export function QuestionCard({
                     {replyingTo && (
                         <div className="bg-indigo-900/30 border border-indigo-500/30 rounded-lg p-2 text-sm">
                             <div className="flex justify-between items-center">
-                                <span className="text-indigo-300">משיב ל-{replyingTo.authorName}:</span>
+                                <span className="text-indigo-300">{g(currentUserProfile?.gender, 'answer')} ל-{replyingTo.authorName}:</span>
                                 <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-white">✕</button>
                             </div>
                             <p className="text-gray-400 text-xs truncate">"{replyingTo.content.slice(0, 50)}..."</p>
@@ -913,13 +963,12 @@ export function QuestionCard({
                         user ? (
                             <form onSubmit={handleSubmitAnswer} className="mb-4 space-y-3 bg-gray-800/30 rounded-xl p-3 border border-gray-700">
                                 <div className="flex gap-2 items-end">
-                                    <textarea
-                                        placeholder="כתוב תשובה..."
+                                    <MentionTextarea
+                                        ref={mentionRef}
+                                        placeholder={`${g(currentUserProfile?.gender, 'write')} תגובה מכבדת (אפשר לתייג עם @)...`}
                                         className="flex-1 bg-gray-800/80 border border-gray-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500 resize-none min-h-[70px] max-h-[150px]"
                                         value={newAnswer}
-                                        onChange={(e) => setNewAnswer(e.target.value)}
-                                        rows={2}
-                                        autoFocus
+                                        onValueChange={(val) => setNewAnswer(val)}
                                     />
                                     <div className="flex flex-col gap-2">
                                         <button
@@ -930,7 +979,7 @@ export function QuestionCard({
                                             {submitting ? (
                                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                             ) : (
-                                                <Send size={18} />
+                                                <ArrowUp size={18} />
                                             )}
                                         </button>
                                         <button
@@ -972,7 +1021,7 @@ export function QuestionCard({
                     {/* Answers Section Header - Simple, no wrapper */}
                     {expanded && (
                         <div className="flex items-center justify-between py-2">
-                            <h3 className="text-sm font-bold text-gray-400">💬 תשובות ({answers.length})</h3>
+                            <h3 className="text-sm font-bold text-gray-400">תשובות ({answers.length})</h3>
                             <button
                                 onClick={() => {
                                     setExpanded(false);
@@ -1051,7 +1100,7 @@ export function QuestionCard({
                                         </div>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-300 leading-relaxed mb-2 whitespace-pre-wrap break-words">{ans.content}</p>
+                                    <p className="text-sm text-gray-300 leading-relaxed mb-2 whitespace-pre-wrap break-words">{renderMentions(ans.content)}</p>
                                 )}
 
                                 {/* Answer Actions */}
@@ -1158,7 +1207,7 @@ export function QuestionCard({
                                                 </span>
                                             </div>
                                             <p className="text-sm text-gray-300 line-clamp-2 whitespace-pre-wrap break-words">
-                                                {ans.content}
+                                                {renderMentions(ans.content)}
                                             </p>
                                         </div>
                                     ))}

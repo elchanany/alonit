@@ -97,7 +97,7 @@ export default function ConversationsPage() {
     if (!user) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center bg-gradient-to-b from-gray-900 to-black">
-                <div className="text-5xl mb-4">💬</div>
+                <div className="text-5xl mb-4">✉️</div>
                 <h1 className="text-xl font-bold text-white mb-2">התחבר לצ'אט</h1>
                 <p className="text-gray-400 mb-6 text-sm">כדי לשוחח עם משתמשים אחרים, עליך להתחבר.</p>
                 <button
@@ -149,7 +149,7 @@ export default function ConversationsPage() {
 
                 {!loading && filteredConversations.length === 0 && (
                     <div className="text-center py-16">
-                        <div className="text-5xl mb-4">💬</div>
+                        <div className="text-5xl mb-4">✉️</div>
                         <p className="text-gray-400">
                             {searchTerm ? 'לא נמצאו תוצאות' : 'אין שיחות עדיין'}
                         </p>

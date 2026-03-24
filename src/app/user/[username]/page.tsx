@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { trackEvent } from '@/services/recommendation.service';
 import BioEditor from '@/components/profile/BioEditor';
 import AudioPlayer from '@/components/chat/AudioPlayer';
+import { getQuestionUrl } from '@/utils/url';
 import { useToast } from '@/context/ToastContext';
 
 interface UserProfile {
@@ -21,6 +22,8 @@ interface UserProfile {
     bioImageUrl?: string;
     bioAudioUrl?: string;
     bioAudioDuration?: number;
+    birthDate?: string;
+    gender?: 'male' | 'female';
     flowerCount: number;
     questionCount: number;
     answerCount: number;
@@ -80,23 +83,42 @@ export default function UserProfilePage() {
         const now = new Date();
         const totalDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
         
-        if (totalDays === 0) return 'הצטרף/ה היום 🌟';
+        const dateStr = date.toLocaleDateString('he-IL', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        
+        if (totalDays === 0) return `הצטרף/ה ב-${dateStr} (היום 🌟)`;
         
         if (totalDays >= 365) {
             const years = Math.floor(totalDays / 365);
             const remainingDays = totalDays % 365;
-            if (remainingDays > 0) return `הצטרף/ה לפני ${years} שנים ו-${remainingDays} ימים`;
-            return `הצטרף/ה לפני ${years} שנים`;
+            if (remainingDays > 0) return `הצטרף/ה ב-${dateStr} (לפני ${years} שנים ו-${remainingDays} ימים)`;
+            return `הצטרף/ה ב-${dateStr} (לפני ${years} שנים)`;
         }
         
         if (totalDays >= 30) {
             const months = Math.floor(totalDays / 30);
             const remainingDays = totalDays % 30;
-            if (remainingDays > 0) return `הצטרף/ה לפני ${months} חודשים ו-${remainingDays} ימים`;
-            return `הצטרף/ה לפני ${months} חודשים`;
+            if (remainingDays > 0) return `הצטרף/ה ב-${dateStr} (לפני ${months} חודשים ו-${remainingDays} ימים)`;
+            return `הצטרף/ה ב-${dateStr} (לפני ${months} חודשים)`;
         }
         
-        return `הצטרף/ה לפני ${totalDays} ימים`;
+        return `הצטרף/ה ב-${dateStr} (לפני ${totalDays} ימים)`;
+    };
+
+    const getAgeText = (birthDateStr?: string, gender?: 'male' | 'female') => {
+        if (!birthDateStr) return null;
+        const bDate = new Date(birthDateStr);
+        if (isNaN(bDate.getTime())) return null;
+        
+        const now = new Date();
+        let age = now.getFullYear() - bDate.getFullYear();
+        const m = now.getMonth() - bDate.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < bDate.getDate())) {
+            age--;
+        }
+        
+        if (gender === 'male') return `בן ${age}`;
+        if (gender === 'female') return `בת ${age}`;
+        return `בן/בת ${age}`;
     };
 
     const renderTextWithLinks = (text: string) => {
@@ -137,6 +159,8 @@ export default function UserProfilePage() {
                             bioImageUrl: userData.bioImageUrl || '',
                             bioAudioUrl: userData.bioAudioUrl || '',
                             bioAudioDuration: userData.bioAudioDuration || 0,
+                            birthDate: userData.birthDate || undefined,
+                            gender: userData.gender || undefined,
                             flowerCount: userData.flowerCount || 0,
                             questionCount: userData.questionCount || 0,
                             answerCount: userData.answerCount || 0,
@@ -154,6 +178,8 @@ export default function UserProfilePage() {
                             bioImageUrl: '',
                             bioAudioUrl: '',
                             bioAudioDuration: 0,
+                            birthDate: undefined,
+                            gender: undefined,
                             flowerCount: 0,
                             questionCount: 0,
                             answerCount: 0,
@@ -223,6 +249,8 @@ export default function UserProfilePage() {
                                 bioImageUrl: '',
                                 bioAudioUrl: '',
                                 bioAudioDuration: 0,
+                                birthDate: undefined,
+                                gender: undefined,
                                 flowerCount: 0,
                                 questionCount: 0,
                                 answerCount: 0,
@@ -351,6 +379,13 @@ export default function UserProfilePage() {
                     </div>
 
                     <h1 className="text-2xl font-bold text-white mb-1">{profile.displayName}</h1>
+                    
+                    {/* Age display feature */}
+                    {getAgeText(profile.birthDate, profile.gender) && (
+                        <p className="text-gray-400 font-medium mb-1">
+                            {getAgeText(profile.birthDate, profile.gender)}
+                        </p>
+                    )}
 
                     <div className="flex items-center justify-center gap-2 mb-4">
                         <span className="px-3 py-1 bg-indigo-600/30 text-indigo-300 text-xs rounded-full font-medium border border-indigo-500/30">
@@ -389,18 +424,23 @@ export default function UserProfilePage() {
                             ) : (
                                 <>
                                     {profile.bio && (
-                                        <p className="text-gray-200 mb-4 whitespace-pre-wrap leading-relaxed">{renderTextWithLinks(profile.bio)}</p>
+                                        <div 
+                                            className="text-gray-200 mb-4 whitespace-pre-wrap leading-relaxed break-words text-center"
+                                            dangerouslySetInnerHTML={{ __html: profile.bio }}
+                                        />
                                     )}
                                     {profile.bioImageUrl && (
-                                        <img src={profile.bioImageUrl} alt="Bio" className="rounded-xl border border-gray-700 max-h-60 mb-4 object-contain shadow-md inline-block max-w-full" />
+                                        <div className="flex justify-center w-full">
+                                            <img src={profile.bioImageUrl} alt="Bio" className="rounded-xl border border-gray-700 max-h-60 mb-4 object-contain shadow-md inline-block max-w-full" />
+                                        </div>
                                     )}
                                     {profile.bioAudioUrl && (
-                                        <div className="bg-gradient-to-r from-indigo-900/50 to-purple-900/50 rounded-xl p-3 border border-indigo-500/30 flex items-center gap-4 max-w-sm ml-auto relative overflow-hidden mt-2">
+                                        <div className="bg-gradient-to-r from-indigo-900/50 to-purple-900/50 rounded-xl p-3 border border-indigo-500/30 flex items-center gap-4 max-w-sm mx-auto relative overflow-hidden mt-2">
                                             <div className="absolute top-0 right-0 w-1 h-full bg-gradient-to-b from-indigo-500 to-purple-500"></div>
                                             <div className="bg-gray-900 rounded-full p-2 text-indigo-400 flex-shrink-0">
                                                 <Mic size={20} />
                                             </div>
-                                            <div className="flex-1 w-[160px] xs:w-[200px] overflow-hidden">
+                                            <div className="flex-1 min-w-0">
                                                 <AudioPlayer src={profile.bioAudioUrl} duration={profile.bioAudioDuration} />
                                             </div>
                                         </div>
@@ -473,13 +513,14 @@ export default function UserProfilePage() {
                     {questions.length === 0 && (
                         <p className="text-center text-gray-500 py-4">אין שאלות עדיין</p>
                     )}
-
-                    {questions.map(q => (
-                        <Link key={q.id} href={`/question/${q.id}`} className="block bg-gray-800/50 border border-indigo-500/20 rounded-xl p-4 hover:bg-gray-800 transition-colors">
-                            <h3 className="font-bold text-white">{q.title}</h3>
-                            <p className="text-sm text-gray-500">{q.answerCount || 0} תשובות</p>
-                        </Link>
-                    ))}
+                    <div className="space-y-3">
+                        {questions.map(q => (
+                            <Link key={q.id} href={getQuestionUrl(q.id, q.title)} className="block bg-gray-800/50 border border-indigo-500/20 rounded-xl p-4 hover:bg-gray-800 transition-colors">
+                                <h3 className="text-white font-bold text-sm mb-2">{q.title}</h3>
+                                <p className="text-sm text-gray-500">{q.answerCount || 0} תשובות</p>
+                            </Link>
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>

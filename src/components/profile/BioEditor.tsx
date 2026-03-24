@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Camera, Mic, Square, Trash2, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Camera, Mic, Square, Trash2, Loader2, Image as ImageIcon, Music, Bold, Italic, Underline } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 
 interface BioEditorProps {
@@ -29,6 +29,10 @@ export default function BioEditor({
     
     const [isSaving, setIsSaving] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
+    const [uploadingAudio, setUploadingAudio] = useState(false);
+    
+    // Rich Text Editor Ref
+    const editorRef = useRef<HTMLDivElement>(null);
     
     // Recording state
     const [isRecording, setIsRecording] = useState(false);
@@ -60,6 +64,35 @@ export default function BioEditor({
             showToast('שגיאה בהעלאת התמונה', 'error');
         } finally {
             setUploadingImage(false);
+        }
+    };
+    
+    // Handle audio file upload
+    const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            showToast('הקובץ גדול מדי (מקסימום 10MB)', 'error');
+            return;
+        }
+        
+        setUploadingAudio(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', 'audio');
+            
+            const res = await fetch('/api/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
+            
+            setAudioUrl(data.url);
+            // Defaulting duration to 0 since reading duration from uploaded file requires audio object loading
+            setAudioDuration(0); 
+        } catch (error) {
+            showToast('שגיאה בהעלאת השמע', 'error');
+        } finally {
+            setUploadingAudio(false);
         }
     };
     
@@ -125,8 +158,14 @@ export default function BioEditor({
     
     const handleSave = async () => {
         setIsSaving(true);
-        await onSave({ text, imageUrl, audioUrl, audioDuration });
+        const finalText = editorRef.current ? editorRef.current.innerHTML : text;
+        await onSave({ text: finalText, imageUrl, audioUrl, audioDuration });
         setIsSaving(false);
+    };
+
+    const execFormat = (cmd: string, val: string = '') => {
+        document.execCommand(cmd, false, val);
+        editorRef.current?.focus();
     };
 
     return (
@@ -135,11 +174,26 @@ export default function BioEditor({
                 עריכת ביו
             </h3>
             
-            <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="ספר קצת על עצמך... (אפשר להוסיף קישורים)"
-                className="w-full bg-gray-900 border border-indigo-500/30 rounded-lg p-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 mb-4 min-h-[80px]"
+            {/* Rich Text Toolbar */}
+            <div className="flex gap-1 mb-2 bg-gray-900 border border-gray-700 rounded-lg p-1.5 mr-auto">
+                <button type="button" onClick={() => execFormat('bold')} className="p-1.5 hover:bg-gray-800 rounded font-bold text-gray-300" title="הדגשה"><Bold size={16} /></button>
+                <button type="button" onClick={() => execFormat('italic')} className="p-1.5 hover:bg-gray-800 rounded italic text-gray-300" title="נטוי"><Italic size={16} /></button>
+                <button type="button" onClick={() => execFormat('underline')} className="p-1.5 hover:bg-gray-800 rounded underline text-gray-300" title="קו תחתון"><Underline size={16} /></button>
+                <div className="w-[1px] bg-gray-700 mx-1 my-1"></div>
+                <select onChange={(e) => execFormat('fontName', e.target.value)} className="bg-gray-800 text-gray-300 border border-gray-700 outline-none rounded p-1 text-xs">
+                    <option value="">גופן רגיל</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Courier New">מכונת כתיבה</option>
+                    <option value="Georgia">קלאסי</option>
+                </select>
+            </div>
+
+            <div
+                ref={editorRef}
+                contentEditable
+                className="w-full bg-gray-900 border border-indigo-500/30 rounded-lg p-4 text-white focus:outline-none focus:border-indigo-500 mb-4 min-h-[100px] text-center"
+                dangerouslySetInnerHTML={{ __html: initialBio }}
+                style={{ direction: 'rtl' }}
             />
             
             {/* Media Previews */}
@@ -174,6 +228,10 @@ export default function BioEditor({
                         <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} disabled={uploadingImage} />
                         {uploadingImage ? <Loader2 size={20} className="animate-spin" /> : <ImageIcon size={20} />}
                     </label>
+                    <label className="cursor-pointer text-indigo-400 hover:text-indigo-300 p-2 rounded-full hover:bg-gray-700 transition" title="העלה סאונד">
+                        <input type="file" accept="audio/*" className="hidden" onChange={handleAudioUpload} disabled={uploadingAudio} />
+                        {uploadingAudio ? <Loader2 size={20} className="animate-spin" /> : <Music size={20} />}
+                    </label>
                     
                     {isRecording ? (
                         <button onClick={stopRecording} className="flex items-center gap-2 bg-red-500/20 text-red-500 hover:bg-red-500/30 px-3 py-1.5 rounded-full transition">
@@ -191,7 +249,7 @@ export default function BioEditor({
                     <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">
                         ביטול
                     </button>
-                    <button onClick={handleSave} disabled={isSaving || isRecording || uploadingImage} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 transition disabled:opacity-50">
+                    <button onClick={handleSave} disabled={isSaving || isRecording || uploadingImage || uploadingAudio} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 transition disabled:opacity-50">
                         {isSaving ? <Loader2 size={16} className="animate-spin" /> : 'שמור'}
                     </button>
                 </div>

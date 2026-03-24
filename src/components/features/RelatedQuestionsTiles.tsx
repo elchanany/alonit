@@ -107,7 +107,7 @@ export function RelatedQuestionsTiles({ questions, side, onQuestionClick }: Rela
                                 <div className="flex items-center gap-2 opacity-60">
                                     {(question.answerCount > 0) && (
                                         <span className="flex items-center gap-1">
-                                            <span className="text-[10px]">💬</span> {question.answerCount}
+                                            <span className="text-[10px]">🗨</span> {question.answerCount}
                                         </span>
                                     )}
                                     {(question.flowerCount > 0) && (
