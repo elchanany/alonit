@@ -21,6 +21,7 @@ interface Question {
     category: string;
     tags?: string[];
     authorId: string;
+    realAuthorId?: string;
     authorName: string;
     authorPhoto?: string;
     isAnonymous: boolean;
@@ -29,6 +30,12 @@ interface Question {
     viewCount: number;
     createdAt: any;
     timeAgo?: string;
+    // Poll data
+    type?: 'question' | 'poll';
+    pollOptions?: { id: string; text: string; votes: number }[];
+    totalVotes?: number;
+    votedUsers?: Record<string, string>;
+    allowVoteChange?: boolean;
 }
 
 export default function QuestionPage() {
@@ -246,10 +253,16 @@ export default function QuestionPage() {
                                 <QuestionCard
                                     id={question.id}
                                     title={question.title}
+                                    type={question.type as 'question' | 'poll'}
+                                    pollOptions={question.pollOptions as any}
+                                    totalVotes={question.totalVotes}
+                                    votedUsers={question.votedUsers as any}
+                                    allowVoteChange={question.allowVoteChange}
                                     content={question.content || question.description || ""}
                                     authorName={question.isAnonymous ? 'אנונימי' : question.authorName}
                                     authorPhoto={question.isAnonymous ? null : question.authorPhoto}
                                     authorId={question.authorId}
+                                    realAuthorId={question.realAuthorId}
                                     createdAt={question.createdAt}
                                     flowerCount={question.flowerCount || 0}
                                     answerCount={question.answerCount || 0}

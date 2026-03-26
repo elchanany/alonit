@@ -21,6 +21,7 @@ interface MentionTextareaProps {
 
 export interface MentionTextareaRef {
     getFormattedValue: () => string;
+    focus: () => void;
 }
 
 export const MentionTextarea = forwardRef<MentionTextareaRef, MentionTextareaProps>(
@@ -79,7 +80,19 @@ export const MentionTextarea = forwardRef<MentionTextareaRef, MentionTextareaPro
     }, []);
 
     useImperativeHandle(ref, () => ({
-        getFormattedValue: getFormattedText
+        getFormattedValue: getFormattedText,
+        focus: () => {
+            if (editorRef.current) {
+                editorRef.current.focus();
+                // Move cursor to end
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(editorRef.current);
+                range.collapse(false); // false means 'to the end'
+                sel?.removeAllRanges();
+                sel?.addRange(range);
+            }
+        }
     }), [getFormattedText]);
 
     // Detect @mention while typing

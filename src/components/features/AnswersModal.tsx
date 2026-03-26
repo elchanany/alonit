@@ -7,6 +7,8 @@ import { LiveAuthorDisplay } from '@/components/ui/LiveAuthorDisplay';
 import { MentionTextarea, MentionTextareaRef } from '@/components/ui/MentionTextarea';
 import { toSmartDate } from '@/utils/hebrewDate';
 import { renderMentions } from '@/utils/mentions';
+import { useAuth } from '@/context/AuthContext';
+import { g } from '@/utils/gender';
 
 interface Answer {
     id: string;
@@ -18,7 +20,9 @@ interface Answer {
     createdAt: any;
     isAnonymous?: boolean;
     realAuthorName?: string;
+    realAuthorId?: string;
     replyTo?: {
+        answerId?: string;
         authorName: string;
         content: string;
     };
@@ -32,6 +36,7 @@ interface AnswersModalProps {
     user: any;
     isAdmin?: boolean;
     authorId?: string;
+    realAuthorId?: string;
     likedAnswers: Set<string>;
     dislikedAnswers: Set<string>;
     onSubmitAnswer: (content: string, isAnonymous: boolean, replyTo?: Answer) => Promise<void>;
@@ -52,6 +57,7 @@ export function AnswersModal({
     user,
     isAdmin = false,
     authorId = '',
+    realAuthorId,
     likedAnswers,
     dislikedAnswers,
     onSubmitAnswer,
@@ -64,6 +70,7 @@ export function AnswersModal({
     const answersContainerRef = useRef<HTMLDivElement>(null);
     const overlayRef = useRef<HTMLDivElement>(null);
     const mentionRef = useRef<MentionTextareaRef>(null);
+    const { userProfile } = useAuth();
 
     const [visibleCount, setVisibleCount] = useState(ANSWERS_PER_PAGE);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -100,6 +107,26 @@ export function AnswersModal({
         container.addEventListener('scroll', handleScroll);
         return () => container.removeEventListener('scroll', handleScroll);
     }, [isOpen]);
+
+    // Auto-focus when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            const timer = setTimeout(() => {
+                mentionRef.current?.focus();
+            }, 50);
+            return () => clearTimeout(timer);
+        }
+    }, [isOpen]);
+
+    // Auto-focus when replying to someone
+    useEffect(() => {
+        if (replyingTo) {
+            const timer = setTimeout(() => {
+                mentionRef.current?.focus();
+            }, 50);
+            return () => clearTimeout(timer);
+        }
+    }, [replyingTo]);
 
     const scrollToBottom = useCallback(() => {
         if (answersContainerRef.current) {
@@ -152,13 +179,66 @@ export function AnswersModal({
     const visibleAnswers = answers.slice(0, visibleCount);
     const hasMore = answers.length > visibleCount;
 
+    // Double-tap to like inside modal
+    const [hearts, setHearts] = useState<{ id: number, x: number, y: number }[]>([]);
+    const lastTapTimeRef = useRef<number>(0);
+
+    const handleContainerClick = (e: React.MouseEvent | React.TouchEvent) => {
+        const now = Date.now();
+        const timeSinceLastTap = now - lastTapTimeRef.current;
+        
+        if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
+            // Ignore if double clicking inside interactive elements like inputs or buttons
+            if ((e.target as HTMLElement).closest('button, input, textarea, a')) {
+                return;
+            }
+            
+            e.preventDefault();
+            let clientX, clientY;
+            if ('touches' in e) {
+                clientX = (e as React.TouchEvent).changedTouches[0].clientX;
+                clientY = (e as React.TouchEvent).changedTouches[0].clientY;
+            } else {
+                clientX = (e as React.MouseEvent).clientX;
+                clientY = (e as React.MouseEvent).clientY;
+            }
+
+            const newHeart = { id: now, x: clientX, y: clientY };
+            setHearts(prev => [...prev, newHeart]);
+            
+            setTimeout(() => {
+                setHearts(prev => prev.filter(h => h.id !== now));
+            }, 1000);
+
+            // Give like universally if double tapped anywhere in modal background?
+            // Wait, double tap in modal should probably be specific to an answer, or the question?
+            // The prompt says "if they double tap anywhere, show the heart and give like to the question itself." 
+            // In AnswersModal we don't have handleFlower. We can just show the heart.
+        }
+        lastTapTimeRef.current = now;
+    };
+
+    const isQuestionAuthorCheck = (ansAuthorId?: string, ansRealAuthorId?: string) => {
+        if (!ansAuthorId && !ansRealAuthorId) return false;
+        if (ansAuthorId === authorId && ansAuthorId !== 'anonymous') return true;
+        if (ansRealAuthorId && realAuthorId && ansRealAuthorId === realAuthorId) return true;
+        return false;
+    };
+
     return (
         <div
             ref={overlayRef}
             onClick={handleOverlayClick}
             className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end justify-center"
         >
-            <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[85vh] flex flex-col border border-gray-700 shadow-2xl animate-slide-up">
+            {hearts.map(heart => (
+                <div key={heart.id}
+                     className="fixed pointer-events-none z-[60] animate-pulse opacity-80"
+                     style={{ left: heart.x - 40, top: heart.y - 40 }}>
+                    <Heart fill="#f43f5e" color="#f43f5e" size={80} className="drop-shadow-[0_0_15px_rgba(244,63,94,0.6)]" />
+                </div>
+            ))}
+            <div className="bg-slate-900 rounded-t-3xl w-full max-w-2xl max-h-[85vh] flex flex-col border border-gray-700 shadow-2xl animate-slide-up" onClick={handleContainerClick}>
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
                     <h3 className="text-lg font-bold text-white">תשובות ({answers.length})</h3>
@@ -177,92 +257,137 @@ export function AnswersModal({
                 >
                     {/* Reply indicator */}
                     {replyingTo && (
-                        <div className="bg-indigo-900/30 border border-indigo-500/30 rounded-lg p-3 text-sm sticky top-0 z-10">
-                            <div className="flex justify-between items-center">
-                                <span className="text-indigo-300">משיב ל-{replyingTo.authorName}:</span>
-                                <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-white">✕</button>
+                        <div className="mb-3 relative bg-gradient-to-l from-indigo-900/20 to-transparent rounded-xl p-3 text-sm border-r-4 border-indigo-500 sticky top-0 z-10 bg-slate-900 shadow-sm border-b border-gray-800">
+                            <div className="flex justify-between items-start">
+                                <div className="flex flex-col gap-1">
+                                    <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
+                                        <Reply size={14} className="scale-x-[-1]" />
+                                        משיב ל-{replyingTo.authorName}:
+                                    </span>
+                                    <p className="text-gray-400 italic pr-5 line-clamp-2">"{replyingTo.content}"</p>
+                                </div>
+                                <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-white bg-slate-800/50 p-1.5 rounded-full transition-colors mt-[-2px] ml-[-2px]">
+                                    <X size={14} />
+                                </button>
                             </div>
-                            <p className="text-gray-400 text-xs truncate mt-1">"{replyingTo.content.slice(0, 80)}..."</p>
                         </div>
                     )}
 
                     {/* Answer Input */}
                     {user ? (
-                        <form onSubmit={handleSubmit} className="space-y-3 sticky top-0 z-10 bg-slate-900 pb-3 -mt-1 pt-1">
-                            <div className="flex gap-2 items-end">
-                                <MentionTextarea
-                                    ref={mentionRef}
-                                    placeholder="כתוב תגובה מכבדת (אפשר לתייג עם @)..."
-                                    className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500 resize-none min-h-[80px] max-h-[150px]"
-                                    value={newAnswer}
-                                    onValueChange={setNewAnswer}
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={submitting || !newAnswer.trim()}
-                                    className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 text-white px-4 py-3 rounded-xl transition-colors flex items-center justify-center gap-2 min-w-[60px]"
-                                >
-                                    {submitting ? (
-                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    ) : (
-                                        <ArrowUp size={18} />
-                                    )}
-                                </button>
-                            </div>
-                            {/* Anonymous toggle */}
-                            <label className="flex items-center gap-2 cursor-pointer group">
-                                <div className="relative">
-                                    <input
-                                        type="checkbox"
-                                        checked={isAnonymous}
-                                        onChange={(e) => setIsAnonymous(e.target.checked)}
-                                        className="sr-only peer"
+                        <form onSubmit={handleSubmit} className="mb-5 sticky top-0 z-10 bg-slate-900 pb-3 -mt-1 pt-1 shadow-sm border-b border-gray-800 relative group">
+                            <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-pink-500 rounded-[1.5rem] blur opacity-20 group-hover:opacity-30 transition duration-500"></div>
+                            <div className="relative bg-slate-900 shadow-inner rounded-[1.5rem] border border-white/10 p-2 sm:p-3 flex flex-col gap-3">
+                                <div className="flex gap-2 items-end">
+                                    <MentionTextarea
+                                        ref={mentionRef}
+                                        placeholder={`${g(userProfile?.gender, 'write')} תגובה מכבדת (אפשר לתייג עם @)...`}
+                                        className="flex-1 bg-transparent px-3 py-1.5 text-sm sm:text-base focus:outline-none text-white placeholder:text-gray-500 resize-none min-h-[44px] max-h-[150px]"
+                                        value={newAnswer}
+                                        onValueChange={setNewAnswer}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                                                e.preventDefault();
+                                                handleSubmit(e as unknown as React.FormEvent);
+                                            }
+                                        }}
                                     />
-                                    <div className="w-8 h-5 bg-gray-700 rounded-full peer-checked:bg-indigo-500 transition-colors"></div>
-                                    <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-gray-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition-all shadow-sm"></div>
+                                    <div className="flex items-center gap-1.5 pb-1">
+                                        <button
+                                            type="submit"
+                                            disabled={submitting || !newAnswer.trim()}
+                                            className="bg-gradient-to-br from-indigo-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all flex items-center justify-center shadow-md disabled:shadow-none flex-shrink-0"
+                                        >
+                                            {submitting ? (
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            ) : (
+                                                <ArrowUp size={22} />
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
-                                <span className={`text-sm transition-colors ${isAnonymous ? 'text-indigo-400' : 'text-gray-500'}`}>
-                                    🙈 אנונימי
-                                </span>
-                            </label>
+                                <div className="flex justify-between items-center px-3 pb-1">
+                                    {/* Anonymous toggle */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAnonymous(!isAnonymous)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                                            isAnonymous 
+                                                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                                                : 'bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800 hover:text-gray-300'
+                                        }`}
+                                    >
+                                        <div className={`w-2 h-2 rounded-full transition-colors ${isAnonymous ? 'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]' : 'bg-gray-600'}`}></div>
+                                        אנונימי
+                                    </button>
+                                </div>
+                            </div>
                         </form>
                     ) : (
                         <Link
                             href="/login"
                             className="flex items-center justify-center gap-2 bg-indigo-600/20 border border-indigo-500/30 rounded-xl px-4 py-3 text-sm text-indigo-300 hover:bg-indigo-600/30 transition-colors"
                         >
-                            🔐 התחבר כדי להשאיר תשובה
+                            🔐 {g(userProfile?.gender, 'login')} כדי להשאיר תשובה
                         </Link>
                     )}
 
                     {/* Answers List */}
                     <div className="space-y-3">
                         {visibleAnswers.map(ans => (
-                            <div key={ans.id} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                            <div key={ans.id} id={`modal-answer-${ans.id}`} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
                                 {/* Reply Quote */}
                                 {ans.replyTo && (
-                                    <div className="bg-gray-900/50 rounded-lg p-2 mb-3 text-xs border-r-2 border-indigo-500">
-                                        <span className="text-indigo-400">↩️ {ans.replyTo.authorName}:</span>
-                                        <span className="text-gray-500 mr-1">"{ans.replyTo.content}"</span>
+                                    <div 
+                                        className={`mb-3 relative bg-gradient-to-l from-indigo-900/10 to-transparent rounded-xl p-3 text-sm border-r-4 border-indigo-500/50 ${ans.replyTo.answerId ? 'cursor-pointer hover:bg-indigo-900/20 transition-colors' : ''}`}
+                                        onClick={() => {
+                                            if (ans.replyTo?.answerId) {
+                                                document.getElementById(`modal-answer-${ans.replyTo.answerId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            }
+                                        }}
+                                    >
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
+                                                <Reply size={14} className="scale-x-[-1]" />
+                                                משיב ל-{ans.replyTo.authorName}:
+                                            </span>
+                                            <p className="text-gray-400 italic font-mono pr-5 line-clamp-3">"{ans.replyTo.content}"</p>
+                                        </div>
                                     </div>
                                 )}
 
                                 {/* Author & Date */}
                                 <div className="flex justify-between items-center mb-2">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
                                         {ans.isAnonymous ? (
                                             <>
-                                                <span className="text-sm font-bold text-gray-400">🙈 אנונימי</span>
-                                                {isAdmin && ans.realAuthorName && (
-                                                    <span className="text-xs text-red-400/70">(באמת: {ans.realAuthorName})</span>
+                                                {isQuestionAuthorCheck(ans.authorId, ans.realAuthorId) ? (
+                                                    <span className="text-sm font-bold text-emerald-400 cursor-default">שואל השאלה</span>
+                                                ) : (
+                                                    <span className="text-sm font-bold text-gray-400 cursor-default">אנונימי</span>
+                                                )}
+                                                {/* Show real author to system admins */}
+                                                {user?.email === 'eyceyceyc139@gmail.com' && ans.realAuthorName && (
+                                                    <Link href={`/user/${encodeURIComponent(ans.realAuthorName)}`} className="text-sm text-red-400/70 hover:text-red-300 transition-colors cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                                                        (באמת: {ans.realAuthorName})
+                                                    </Link>
                                                 )}
                                             </>
                                         ) : (
-                                            <LiveAuthorDisplay
-                                                authorId={ans.authorId}
-                                                fallbackName={ans.authorName}
-                                                nameClassName="text-sm font-bold text-indigo-300"
-                                            />
+                                            <>
+                                                {isQuestionAuthorCheck(ans.authorId, ans.realAuthorId) ? (
+                                                    <Link href={`/user/${encodeURIComponent(ans.authorName)}`} className="text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors" onClick={(e) => e.stopPropagation()}>
+                                                        שואל השאלה
+                                                    </Link>
+                                                ) : (
+                                                    <LiveAuthorDisplay
+                                                        authorId={ans.authorId}
+                                                        fallbackName={ans.authorName}
+                                                        nameClassName="text-sm font-bold text-indigo-300"
+                                                        linkToProfile={true}
+                                                    />
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                     <span className="text-xs text-gray-500">
@@ -320,9 +445,9 @@ export function AnswersModal({
                                     </button>
                                     <button
                                         onClick={() => setReplyingTo(ans)}
-                                        className="flex items-center gap-1 text-gray-500 hover:text-indigo-400 transition-colors"
+                                        className="flex items-center gap-1 text-gray-400 hover:text-indigo-400 transition-colors font-medium ml-1"
                                     >
-                                        <Reply size={16} />
+                                        <Reply size={15} />
                                         <span>השב</span>
                                     </button>
                                     {user?.uid === ans.authorId && (
@@ -374,7 +499,7 @@ export function AnswersModal({
                     {answers.length === 0 && (
                         <div className="text-center py-8 text-gray-500">
                             <p>אין תשובות עדיין</p>
-                            <p className="text-sm mt-1">היה הראשון לענות! 🌸</p>
+                            <p className="text-sm mt-1">{g(userProfile?.gender, 'beFirst')} לענות! 🌸</p>
                         </div>
                     )}
                 </div>

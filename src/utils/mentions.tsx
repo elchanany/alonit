@@ -30,13 +30,10 @@ export function renderMentions(text: string): React.ReactNode[] {
                 key={`mention-${match.index}`}
                 href={`/user/${encodeURIComponent(username)}`}
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 bg-gradient-to-r from-indigo-500/25 to-purple-500/25 text-indigo-200 px-2 py-0.5 rounded-lg text-sm font-semibold border border-indigo-400/40 hover:border-indigo-400/70 hover:from-indigo-500/35 hover:to-purple-500/35 transition-all cursor-pointer mx-0.5 no-underline"
+                className="inline-flex items-center text-indigo-400 font-semibold hover:text-indigo-300 transition-colors mx-0.5 no-underline"
                 style={{ textDecoration: 'none' }}
             >
-                <span className="w-4 h-4 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
-                    {username[0]}
-                </span>
-                <span>{username}</span>
+                <span>@{username}</span>
             </a>
         );
         

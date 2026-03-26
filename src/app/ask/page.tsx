@@ -10,6 +10,7 @@ import { MentionTextarea, MentionTextareaRef } from '@/components/ui/MentionText
 import { extractMentions } from '@/utils/mentions';
 import { getQuestionUrl } from '@/utils/url';
 import { g } from '@/utils/gender';
+import { BarChart3, HelpCircle, Trash2 } from 'lucide-react'; // Added icons for Poll
 
 import semanticClustersRaw from '@/lib/semantic-clusters.json';
 const semanticClusters = semanticClustersRaw as Record<string, string[]>;
@@ -42,6 +43,9 @@ export default function AskPage() {
         title: '',
         content: '',
         isAnonymous: false,
+        postType: 'question' as 'question' | 'poll',
+        pollOptions: ['', ''] as string[],
+        allowVoteChange: false,
     });
     
     const [showTagSearch, setShowTagSearch] = useState(false);
@@ -55,7 +59,8 @@ export default function AskPage() {
     
     useEffect(() => {
         if (step === 2) {
-            const textParams = `${formData.title} ${formData.content} ${formData.tags.join(' ')}`;
+            const pollOptionsText = formData.postType === 'poll' ? formData.pollOptions.join(' ') : '';
+            const textParams = `${formData.title} ${formData.content} ${pollOptionsText} ${formData.tags.join(' ')}`;
             const writtenWords = extractKeywords(textParams);
             const suggestions = new Set<string>();
             
@@ -101,6 +106,40 @@ export default function AskPage() {
         });
     };
 
+    const addPollOption = () => {
+        if (formData.pollOptions.length >= 5) {
+            showToast('ניתן להוסיף עד 5 אפשרויות לסקר', 'error');
+            return;
+        }
+        setFormData(prev => ({ ...prev, pollOptions: [...prev.pollOptions, ''] }));
+    };
+
+    const updatePollOption = (index: number, value: string) => {
+        setFormData(prev => {
+            const newOptions = [...prev.pollOptions];
+            newOptions[index] = value;
+            return { ...prev, pollOptions: newOptions };
+        });
+    };
+
+    const removePollOption = (index: number) => {
+        if (formData.pollOptions.length <= 2) return;
+        setFormData(prev => ({
+            ...prev,
+            pollOptions: prev.pollOptions.filter((_, i) => i !== index)
+        }));
+    };
+
+    const isStep1Valid = () => {
+        if (formData.title.trim().length < 7) return false;
+        if (formData.postType === 'question') {
+            return formData.content.trim().length >= 20;
+        } else {
+            // Poll validation: all options must have text
+            return formData.pollOptions.every(opt => opt.trim().length > 0);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || submitting) return;
@@ -112,9 +151,9 @@ export default function AskPage() {
 
             const formattedContent = mentionRef.current?.getFormattedValue() || formData.content;
 
-            const docRef = await addDoc(collection(db, 'questions'), {
+            const payload: any = {
                 title: formData.title,
-                content: formattedContent,
+                content: formData.postType === 'question' ? formattedContent : '',
                 category: formData.tags.length > 0 ? formData.tags[0] : 'כללי',
                 tags: formData.tags,
                 isAnonymous: formData.isAnonymous,
@@ -124,8 +163,22 @@ export default function AskPage() {
                 createdAt: serverTimestamp(),
                 flowerCount: 0,
                 answerCount: 0,
-                viewCount: 0
-            });
+                viewCount: 0,
+                type: formData.postType
+            };
+
+            if (formData.postType === 'poll') {
+                payload.pollOptions = formData.pollOptions.map((opt, i) => ({
+                    id: `option-${i}-${Date.now()}`,
+                    text: opt.trim(),
+                    votes: 0
+                }));
+                payload.votedUsers = {};
+                payload.totalVotes = 0;
+                payload.allowVoteChange = formData.allowVoteChange;
+            }
+
+            const docRef = await addDoc(collection(db, 'questions'), payload);
 
             trackEvent('ASK_QUESTION', { 
                 category: formData.tags.length > 0 ? formData.tags[0] : 'כללי',
@@ -238,8 +291,26 @@ export default function AskPage() {
 
                     {step === 1 && (
                         <div className="space-y-6 animate-in fade-in duration-300">
+                            {/* Type Toggle */}
+                            <div className="flex bg-gray-800/50 p-1.5 rounded-xl border border-gray-700 max-w-sm mx-auto mb-8">
+                                <button
+                                    onClick={() => setFormData({ ...formData, postType: 'question' })}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium transition-all ${formData.postType === 'question' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-200'}`}
+                                >
+                                    <HelpCircle size={18} />
+                                    שאלה רגילה
+                                </button>
+                                <button
+                                    onClick={() => setFormData({ ...formData, postType: 'poll' })}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium transition-all ${formData.postType === 'poll' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-200'}`}
+                                >
+                                    <BarChart3 size={18} />
+                                    סקר חדש
+                                </button>
+                            </div>
+
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">כותרת השאלה (מינימום 7 תווים)</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">כותרת {formData.postType === 'poll' ? 'הסקר' : 'השאלה'} (מינימום 7 תווים)</label>
                                 <div className="relative">
                                     <Type className="absolute top-3 right-3 text-gray-500" size={20} />
                                     <input
@@ -254,25 +325,82 @@ export default function AskPage() {
                                     )}
                                 </div>
                             </div>
-                            <div className="mt-4">
-                                <label className="block text-sm font-medium text-gray-300 mb-2">פירוט (מינימום 20 תווים)</label>
-                                <div className="relative">
-                                    <MentionTextarea
-                                        ref={mentionRef}
-                                        value={formData.content}
-                                        onValueChange={(val) => setFormData({ ...formData, content: val })}
-                                        className={`w-full p-4 bg-gray-800/50 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-32 resize-none text-white placeholder:text-gray-500 transition-colors ${formData.content.length > 0 && formData.content.trim().length < 20 ? 'border-red-500/50' : 'border-gray-700 focus:border-transparent'}`}
-                                        placeholder="פרט ככל הניתן כדי לקבל תשובות מדויקות (אפשר לתייג עם @)..."
-                                    />
-                                    {formData.content.length > 0 && formData.content.trim().length < 20 && (
-                                        <p className="text-red-400 text-xs mt-1 absolute -bottom-5 right-0">חסרים עוד {20 - formData.content.trim().length} תווים</p>
-                                    )}
+                            
+                            {formData.postType === 'question' ? (
+                                <div className="mt-4">
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">פירוט (מינימום 20 תווים)</label>
+                                    <div className="relative">
+                                        <MentionTextarea
+                                            ref={mentionRef}
+                                            value={formData.content}
+                                            onValueChange={(val) => setFormData({ ...formData, content: val })}
+                                            className={`w-full p-4 bg-gray-800/50 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-32 resize-none text-white placeholder:text-gray-500 transition-colors ${formData.content.length > 0 && formData.content.trim().length < 20 ? 'border-red-500/50' : 'border-gray-700 focus:border-transparent'}`}
+                                            placeholder="פרט ככל הניתן כדי לקבל תשובות מדויקות (אפשר לתייג עם @)..."
+                                        />
+                                        {formData.content.length > 0 && formData.content.trim().length < 20 && (
+                                            <p className="text-red-400 text-xs mt-1 absolute -bottom-5 right-0">חסרים עוד {20 - formData.content.trim().length} תווים</p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="mt-4 space-y-3">
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">אפשרויות הסקר (2 עד 5 אפשרויות)</label>
+                                    {formData.pollOptions.map((opt, idx) => (
+                                        <div key={idx} className="relative flex items-center gap-2 group">
+                                            <div className="flex-1 relative">
+                                                <input
+                                                    type="text"
+                                                    value={opt}
+                                                    onChange={(e) => updatePollOption(idx, e.target.value)}
+                                                    className="w-full pr-4 pl-10 py-2.5 bg-gray-800/50 border border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-white placeholder:text-gray-600 transition-colors"
+                                                    placeholder={`אפשרות ${idx + 1}`}
+                                                />
+                                            </div>
+                                            {formData.pollOptions.length > 2 && (
+                                                <button
+                                                    onClick={() => removePollOption(idx)}
+                                                    className="p-2.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
+                                                    title="מחק אפשרות"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {formData.pollOptions.length < 5 && (
+                                        <button
+                                            onClick={addPollOption}
+                                            className="mt-2 text-indigo-400 font-medium text-sm flex items-center gap-1.5 hover:text-indigo-300 transition-colors p-2 rounded-lg hover:bg-indigo-500/10"
+                                        >
+                                            <PlusCircle size={16} />
+                                            הוסף אפשרות
+                                        </button>
+                                    )}
+
+                                    {/* Allow vote change toggle */}
+                                    <div className="mt-4 flex items-center justify-between p-3.5 bg-gray-800/40 border border-gray-700/50 rounded-xl">
+                                        <div className="text-right">
+                                            <p className="text-sm font-medium text-gray-200">שינוי דעה מותר</p>
+                                            <p className="text-xs text-gray-500 mt-0.5">האם מצביעים יוכלו לשנות את הבחירה שלהם?</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setFormData(prev => ({ ...prev, allowVoteChange: !prev.allowVoteChange }))}
+                                            className={`relative w-12 h-6 rounded-full transition-all duration-300 flex-shrink-0 ml-3 ${
+                                                formData.allowVoteChange ? 'bg-indigo-500' : 'bg-gray-600'
+                                            }`}
+                                        >
+                                            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-300 ${
+                                                formData.allowVoteChange ? 'right-0.5' : 'left-0.5'
+                                            }`} />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex justify-end mt-10">
                                 <button
                                     onClick={() => setStep(2)}
-                                    disabled={formData.title.trim().length < 7 || formData.content.trim().length < 20}
+                                    disabled={!isStep1Valid()}
                                     className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-medium flex items-center justify-center gap-3 transition-all duration-300 hover:bg-indigo-500 hover:shadow-[0_0_20px_rgba(99,102,241,0.5)] disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
                                 >
                                     המשך לשלב הבא
@@ -453,7 +581,7 @@ export default function AskPage() {
                                     ) : (
                                         <>
                                             <ArrowUp size={18} />
-                                            {g(userProfile?.gender, 'ask')} שאלה
+                                            {g(userProfile?.gender, 'ask')} {formData.postType === 'poll' ? 'סקר' : 'שאלה'}
                                         </>
                                     )}
                                 </button>

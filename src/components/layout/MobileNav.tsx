@@ -7,11 +7,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getGenderedTexts } from '@/utils/gender';
 
 export function MobileNav() {
     const pathname = usePathname();
-    const { user, loading: authLoading } = useAuth();
+    const { user, userProfile, loading: authLoading } = useAuth();
     const [unreadCount, setUnreadCount] = useState(0);
+    const texts = getGenderedTexts(userProfile?.gender);
 
     // Listen for unread notifications
     useEffect(() => {
@@ -100,7 +102,7 @@ export function MobileNav() {
                             {isAdmin && <NavItem href="/admin" icon={Settings} label="ניהול" />}
                         </>
                     ) : (
-                        <NavItem href="/login" icon={LogIn} label="התחברות" />
+                        <NavItem href="/login" icon={LogIn} label={texts.login} />
                     )}
                 </div>
             </div>

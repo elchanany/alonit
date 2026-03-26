@@ -10,6 +10,7 @@ import { findRelatedQuestions, getRelatedTiles, Question as RecommendationQuesti
 import { useAuth } from '@/context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
+import { getGenderedTexts } from '@/utils/gender';
 
 interface Question {
     id: string;
@@ -19,6 +20,7 @@ interface Question {
     category: string;
     tags?: string[];
     authorId: string;
+    realAuthorId?: string;
     authorName: string;
     authorPhoto?: string;
     isAnonymous: boolean;
@@ -27,6 +29,12 @@ interface Question {
     viewCount: number;
     createdAt: any;
     timeAgo?: string;
+    // Poll data
+    type?: 'question' | 'poll';
+    pollOptions?: { id: string; text: string; votes: number }[];
+    totalVotes?: number;
+    votedUsers?: Record<string, string>;
+    allowVoteChange?: boolean;
 }
 
 export default function Home() {
@@ -35,7 +43,8 @@ export default function Home() {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [leftTiles, setLeftTiles] = useState<RecommendationQuestion[]>([]);
     const [rightTiles, setRightTiles] = useState<RecommendationQuestion[]>([]);
-    const { user } = useAuth();
+    const { user, userProfile } = useAuth();
+    const texts = getGenderedTexts(userProfile?.gender);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const questionStartTimeRef = useRef<number>(Date.now());
     const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
@@ -224,7 +233,7 @@ export default function Home() {
                         <div className="h-full w-full flex flex-col items-center justify-center text-indigo-300 p-6 text-center">
                             <div className="text-6xl mb-4">🌙</div>
                             <h2 className="text-2xl font-bold mb-2">אין שאלות עדיין</h2>
-                            <p className="text-indigo-400">הלילה יפה... היה הראשון להאיר בשאלה!</p>
+                            <p className="text-indigo-400">הלילה יפה... {texts.beFirst} להאיר בשאלה!</p>
                         </div>
                     ) : (
                         questions.map((question, index) => (
@@ -236,11 +245,17 @@ export default function Home() {
                                 <div className="w-full h-full rounded-2xl overflow-hidden">
                                     <QuestionCard
                                         id={question.id}
+                                        type={question.type as 'question' | 'poll'}
+                                        pollOptions={question.pollOptions as any}
+                                        totalVotes={question.totalVotes}
+                                        votedUsers={question.votedUsers as any}
+                                        allowVoteChange={question.allowVoteChange}
                                         title={question.title}
                                         content={question.content || question.description || ""}
                                         authorName={question.isAnonymous ? 'אנונימי' : question.authorName}
                                         authorPhoto={question.isAnonymous ? null : question.authorPhoto}
                                         authorId={question.authorId}
+                                        realAuthorId={question.realAuthorId}
                                         createdAt={question.createdAt}
                                         flowerCount={question.flowerCount || 0}
                                         answerCount={question.answerCount || 0}

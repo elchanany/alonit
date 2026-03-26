@@ -11,6 +11,7 @@ import { AppLogo } from '@/components/ui/AppLogo';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { trackEvent } from '@/services/recommendation.service';
 import { getQuestionUrl } from '@/utils/url';
+import { getGenderedTexts } from '@/utils/gender';
 
 const SEARCH_HISTORY_KEY = 'alonit_search_history';
 const MAX_HISTORY = 8;
@@ -38,6 +39,7 @@ export function Header() {
     const router = useRouter();
     const [unreadCount, setUnreadCount] = useState(0);
     const [isAdmin, setIsAdmin] = useState(false);
+    const texts = getGenderedTexts(userProfile?.gender);
 
     // Search state
     const [searchQuery, setSearchQuery] = useState('');
@@ -198,7 +200,7 @@ export function Header() {
                         <input
                             ref={inputRef}
                             type="search"
-                            placeholder="חפש שאלות, משתמשים, נושאים..."
+                            placeholder={`${texts.search} שאלות, משתמשים, נושאים...`}
                             className="w-full bg-gray-900/50 border border-gray-700 rounded-full py-2 pr-9 pl-4 text-sm focus:bg-black focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-white placeholder:text-gray-500"
                             value={searchQuery}
                             onChange={(e) => {
@@ -305,7 +307,7 @@ export function Header() {
                 {/* Desktop Nav */}
                 <nav className="hidden md:flex items-center gap-2">
                     <Link href="/ask" className="text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10 active:scale-95">
-                        שאל שאלה
+                        {texts.ask} שאלה
                     </Link>
 
                     {authLoading ? (
@@ -352,7 +354,7 @@ export function Header() {
                     ) : (
                         <Link href="/login" className="flex items-center gap-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full transition-colors active:scale-95">
                             <LogIn size={16} />
-                            התחברות
+                            {texts.login}
                         </Link>
                     )}
                 </nav>

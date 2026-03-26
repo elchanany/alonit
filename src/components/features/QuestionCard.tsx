@@ -25,6 +25,7 @@ interface QuestionCardProps {
     authorName: string;
     authorPhoto?: string | null;
     authorId?: string;
+    realAuthorId?: string;
     flowerCount: number;
     answerCount: number;
     viewCount: number;
@@ -34,6 +35,12 @@ interface QuestionCardProps {
     tags?: string[];
     trustLevel?: string;
     onDelete?: () => void;
+    // --- Poll Data ---
+    type?: 'question' | 'poll';
+    pollOptions?: { id: string; text: string; votes: number }[];
+    totalVotes?: number;
+    votedUsers?: Record<string, string>;
+    allowVoteChange?: boolean;
 }
 
 interface Answer {
@@ -46,7 +53,7 @@ interface Answer {
     isAnonymous?: boolean;
     flowerCount: number;
     dislikeCount?: number;
-    replyTo?: { authorName: string; content: string };
+    replyTo?: { answerId?: string; authorName: string; content: string };
     createdAt: any;
 }
 
@@ -65,7 +72,14 @@ export function QuestionCard({
     category,
     tags,
     trustLevel,
-    onDelete
+    onDelete,
+    realAuthorId,
+    // --- Poll Props ---
+    type = 'question',
+    pollOptions = [],
+    totalVotes = 0,
+    votedUsers = {},
+    allowVoteChange = false,
 }: QuestionCardProps) {
     const { user, userProfile: currentUserProfile } = useAuth();
     const { showToast } = useToast();
@@ -91,6 +105,72 @@ export function QuestionCard({
     const [visibleAnswersCount, setVisibleAnswersCount] = useState(10);
     const [showAnswerForm, setShowAnswerForm] = useState(false);
     const [isAtBottom, setIsAtBottom] = useState(false);
+    
+    // --- Poll State ---
+    const [localPollOptions, setLocalPollOptions] = useState(pollOptions);
+    const [localTotalVotes, setLocalTotalVotes] = useState(totalVotes);
+    const [localVotedUsers, setLocalVotedUsers] = useState(votedUsers);
+    const [isVoting, setIsVoting] = useState(false);
+    const [userVotedOption, setUserVotedOption] = useState<string | null>(null);
+    // Animated bar heights (starts at 0, animates to real % after mount)
+    const [animatedPcts, setAnimatedPcts] = useState<Record<string, number>>({});
+
+    // Initialize user vote state
+    useEffect(() => {
+        if (type === 'poll') {
+            const userId = user?.uid;
+            if (userId && localVotedUsers[userId]) {
+                const chosenId = localVotedUsers[userId];
+                setUserVotedOption(chosenId);
+                // Trigger animation for existing vote on load
+                const timer = setTimeout(() => {
+                    const pcts: Record<string, number> = {};
+                    const total = localTotalVotes;
+                    localPollOptions.forEach(o => {
+                        pcts[o.id] = total > 0 ? Math.round((o.votes / total) * 100) : 0;
+                    });
+                    setAnimatedPcts(pcts);
+                }, 50);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [type, user?.uid]); // eslint-disable-line
+
+    // TikTok-style like configuration
+    const [hearts, setHearts] = useState<{ id: number, x: number, y: number }[]>([]);
+    const lastTapTimeRef = useRef<number>(0);
+
+    const handleContainerClick = (e: React.MouseEvent | React.TouchEvent) => {
+        const now = Date.now();
+        const timeSinceLastTap = now - lastTapTimeRef.current;
+        
+        // Between 0 and 300ms is a double tap
+        if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
+            e.preventDefault();
+            
+            let clientX, clientY;
+            if ('touches' in e) {
+                clientX = (e as React.TouchEvent).changedTouches[0].clientX;
+                clientY = (e as React.TouchEvent).changedTouches[0].clientY;
+            } else {
+                clientX = (e as React.MouseEvent).clientX;
+                clientY = (e as React.MouseEvent).clientY;
+            }
+
+            const newHeart = { id: now, x: clientX, y: clientY };
+            setHearts(prev => [...prev, newHeart]);
+            
+            // Cleanup heart after animation
+            setTimeout(() => {
+                setHearts(prev => prev.filter(h => h.id !== now));
+            }, 1000);
+
+            if (!liked) {
+                handleFlower();
+            }
+        }
+        lastTapTimeRef.current = now;
+    };
 
     // Refs for scroll and click-outside
     const answersContainerRef = useRef<HTMLDivElement>(null);
@@ -200,6 +280,16 @@ export function QuestionCard({
             return () => document.removeEventListener('mousedown', handleClickOutside);
         }
     }, [showAnswerForm, expanded]);
+
+    // Auto-focus the text area when form opens or quote is selected
+    useEffect(() => {
+        if (showAnswerForm) {
+            const timer = setTimeout(() => {
+                mentionRef.current?.focus();
+            }, 50);
+            return () => clearTimeout(timer);
+        }
+    }, [showAnswerForm, replyingTo]);
 
     const handleFlower = async () => {
         if (!user) {
@@ -537,6 +627,7 @@ export function QuestionCard({
             // Add reply reference if replying to someone
             if (replyingTo) {
                 answerData.replyTo = {
+                    answerId: replyingTo.id,
                     authorName: replyingTo.authorName,
                     content: replyingTo.content.slice(0, 50) + (replyingTo.content.length > 50 ? '...' : '')
                 };
@@ -554,6 +645,7 @@ export function QuestionCard({
             fetchAllAnswers();
             trackInteraction(questObj, 'answer');
             showToast('התשובה נשלחה בהצלחה', 'success');
+            setShowAnswerForm(false);
 
             // Send notify to question author (if not self)
             if (authorId && authorId !== user.uid) {
@@ -781,16 +873,33 @@ export function QuestionCard({
         }
     };
 
+    const isQuestionAuthorCheck = (ansAuthorId?: string, ansRealAuthorId?: string) => {
+        if (!ansAuthorId && !ansRealAuthorId) return false;
+        // User answered non-anonymously and asked non-anonymously
+        if (ansAuthorId === authorId && ansAuthorId !== 'anonymous') return true;
+        // User asked anonymously but system knows their real identity (or vice versa)
+        if (ansRealAuthorId && realAuthorId && ansRealAuthorId === realAuthorId) return true;
+        return false;
+    };
+
     return (
-        <div className="w-full h-full flex flex-col p-3 sm:p-4 md:p-6 bg-slate-900 text-white overflow-hidden">
-            <div className="flex-1 w-full flex flex-col gap-2 sm:gap-3 md:gap-4 min-h-0">
+        <div className="w-full h-full flex flex-col p-3 sm:p-4 md:p-6 bg-slate-900 text-white overflow-hidden" onClick={handleContainerClick}>
+            {/* TikTok style floating hearts */}
+            {hearts.map(heart => (
+                <div key={heart.id}
+                     className="fixed pointer-events-none z-50 animate-pulse opacity-80"
+                     style={{ left: heart.x - 40, top: heart.y - 40 }}>
+                    <Heart fill="#f43f5e" color="#f43f5e" size={80} className="drop-shadow-[0_0_15px_rgba(244,63,94,0.6)]" />
+                </div>
+            ))}
+                <div className="flex-1 w-full flex flex-col gap-2 sm:gap-3 md:gap-4 min-h-0">
 
                 {/* Like Login Prompt */}
                 {showLikePrompt && !user && (
                     <div className="mb-4 flex items-center justify-between bg-pink-600/20 border border-pink-500/30 rounded-xl px-4 py-3">
-                        <span className="text-sm text-pink-300">💖 התחבר כדי לתת לייק</span>
+                        <span className="text-sm text-pink-300">💖 {g(currentUserProfile?.gender, 'login')} כדי לתת לייק</span>
                         <Link href="/login" className="text-sm font-bold text-pink-400 hover:text-pink-300">
-                            התחבר
+                            {g(currentUserProfile?.gender, 'login')}
                         </Link>
                     </div>
                 )}
@@ -827,7 +936,7 @@ export function QuestionCard({
                                 <button
                                     onClick={() => setIsEditing(true)}
                                     className="p-1.5 text-gray-500 hover:text-indigo-400 transition-colors"
-                                    title="ערוך"
+                                    title={g(currentUserProfile?.gender, 'edit')}
                                 >
                                     <Edit2 size={16} />
                                 </button>
@@ -836,7 +945,7 @@ export function QuestionCard({
                                 <button
                                     onClick={handleDeleteQuestion}
                                     className="p-1.5 text-gray-500 hover:text-red-400 transition-colors"
-                                    title="מחק"
+                                    title={g(currentUserProfile?.gender, 'delete_')}
                                 >
                                     <Trash2 size={16} />
                                 </button>
@@ -879,6 +988,11 @@ export function QuestionCard({
                                 </button>
                             </div>
                         </div>
+                    ) : type === 'poll' ? (
+                        <>
+                            {/* Poll: Title at top */}
+                            <h2 className="text-lg sm:text-xl font-bold mb-2 leading-tight text-white">{editTitle}</h2>
+                        </>
                     ) : (
                         <>
                             <h2 className="text-lg sm:text-xl font-bold mb-2 sm:mb-3 leading-tight text-white">{editTitle}</h2>
@@ -906,7 +1020,7 @@ export function QuestionCard({
                     )}
                 </div>
 
-                {/* Engagement Bar */}
+                {/* Engagement Bar — always directly below title/content/tags */}
                 <div className="flex items-center gap-4 py-4 border-t border-b border-gray-800 mt-4">
                     <button
                         onClick={handleFlower}
@@ -944,76 +1058,208 @@ export function QuestionCard({
                     </div>
                 </div>
 
-                {/* Answers Section - Takes remaining height, relative for scroll button positioning */}
+                {/* Poll options area — shown below the engagement bar for polls */}
+                {type === 'poll' && !isEditing && (
+                    <div className="mt-4 space-y-2.5">
+                        {localPollOptions.map((opt) => {
+                            const votePercentage = localTotalVotes > 0 ? Math.round((opt.votes / localTotalVotes) * 100) : 0;
+                            const maxVotes = localPollOptions.reduce((max, o) => o.votes > max ? o.votes : max, 0);
+                            const isWinner = maxVotes > 0 && opt.votes === maxVotes;
+                            const isChosen = userVotedOption === opt.id;
+                            const hasVoted = userVotedOption !== null;
+
+                            return (
+                                <div key={opt.id} className="relative h-14 rounded-xl overflow-hidden cursor-pointer group"
+                                    onClick={async () => {
+                                        // Block if: already voted AND vote change not allowed, OR currently voting
+                                        if ((hasVoted && !allowVoteChange) || isVoting) return;
+                                        // If changing vote, revert old vote count
+                                        if (hasVoted && allowVoteChange && userVotedOption === opt.id) return; // same option, no change
+                                        if (!user) { showToast('יש להתחבר כדי להצביע', 'error'); return; }
+                                        setIsVoting(true);
+                                        const prevVotedId = userVotedOption;
+                                        const newOptions = localPollOptions.map(o => {
+                                            if (o.id === opt.id) return { ...o, votes: o.votes + 1 };
+                                            if (o.id === prevVotedId) return { ...o, votes: Math.max(0, o.votes - 1) };
+                                            return o;
+                                        });
+                                        const newTotal = prevVotedId ? localTotalVotes : localTotalVotes + 1;
+                                        setLocalPollOptions(newOptions);
+                                        setLocalTotalVotes(newTotal);
+                                        setUserVotedOption(opt.id);
+                                        setLocalVotedUsers(prev => ({ ...prev, [user.uid]: opt.id }));
+                                        // Animate bars
+                                        setTimeout(() => {
+                                            const pcts: Record<string, number> = {};
+                                            newOptions.forEach(o => { pcts[o.id] = newTotal > 0 ? Math.round((o.votes / newTotal) * 100) : 0; });
+                                            setAnimatedPcts(pcts);
+                                        }, 50);
+                                        try {
+                                            const res = await fetch('/api/poll/vote', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ questionId: id, optionId: opt.id, userId: user.uid })
+                                            });
+                                            const data = await res.json();
+                                            if (!data.success) {
+                                                setLocalPollOptions(localPollOptions);
+                                                setLocalTotalVotes(localTotalVotes);
+                                                setUserVotedOption(userVotedOption);
+                                                setLocalVotedUsers(prev => { const c = { ...prev }; if (user?.uid) delete c[user.uid]; return c; });
+                                                setAnimatedPcts({});
+                                                showToast(data.error || 'כבר הצבעת מרשת זו', 'error');
+                                            }
+                                        } catch (err) { console.error(err); }
+                                        finally { setIsVoting(false); }
+                                    }}
+                                >
+                                    {/* Dark base track */}
+                                    <div className={`absolute inset-0 rounded-xl transition-all duration-300
+                                        ${!hasVoted
+                                            ? 'bg-gray-800/70 group-hover:bg-gray-700/80'
+                                            : isChosen
+                                                ? 'bg-indigo-900/80 ring-2 ring-indigo-400/80 shadow-[0_0_14px_rgba(99,102,241,0.4)]'
+                                                : isWinner
+                                                    ? 'bg-gray-800/70 ring-1 ring-white/20'
+                                                    : 'bg-gray-900/50'}`} />
+
+                                    {/* Fill bar — expands from RIGHT to LEFT across full width */}
+                                    {hasVoted && (
+                                        <div
+                                            className={`absolute top-0 bottom-0 right-0 rounded-xl transition-[width] duration-1000 ease-out
+                                                ${isChosen ? 'bg-indigo-500/40' : isWinner ? 'bg-white/20' : 'bg-gray-400/20'}`}
+                                            style={{ width: `${animatedPcts[opt.id] ?? 0}%` }}
+                                        />
+                                    )}
+
+                                    {/* Content row */}
+                                    <div className="absolute inset-0 flex items-center justify-between px-4 z-10">
+                                        {/* Left: % + vote count */}
+                                        <div className="flex items-center gap-2 min-w-[72px]">
+                                            {hasVoted && (
+                                                <span className={`font-bold text-sm tabular-nums ${isChosen ? 'text-indigo-300' : isWinner ? 'text-gray-200' : 'text-gray-500'}`}>
+                                                    {animatedPcts[opt.id] ?? 0}%
+                                                </span>
+                                            )}
+                                            {hasVoted && (
+                                                <span className="text-xs text-gray-500">{opt.votes} קולות</span>
+                                            )}
+                                        </div>
+                                        {/* Right: option text, color-coded */}
+                                        <span className={`font-semibold text-right ${!hasVoted ? 'text-gray-100' : isChosen ? 'text-indigo-100 font-bold' : isWinner ? 'text-gray-200' : 'text-gray-500'}`}>
+                                            {opt.text}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <p className="text-center text-xs text-gray-500 pt-1">סה"כ {localTotalVotes} מצביעים</p>
+                    </div>
+                )}
+
+                {/* Answers Section — hidden for polls */}
+                {type !== 'poll' && (
                 <div ref={answersSectionRef} className="flex-1 flex flex-col min-h-0 mt-2 relative">
+
 
                     {/* Reply indicator */}
                     {replyingTo && (
-                        <div className="bg-indigo-900/30 border border-indigo-500/30 rounded-lg p-2 text-sm">
-                            <div className="flex justify-between items-center">
-                                <span className="text-indigo-300">{g(currentUserProfile?.gender, 'answer')} ל-{replyingTo.authorName}:</span>
-                                <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-white">✕</button>
+                        <div className="mb-3 relative bg-gradient-to-l from-indigo-900/20 to-transparent rounded-xl p-3 text-sm border-r-4 border-indigo-500">
+                            <div className="flex justify-between items-start">
+                                <div className="flex flex-col gap-1">
+                                    <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
+                                        <Reply size={14} className="scale-x-[-1]" />
+                                        {g(currentUserProfile?.gender, 'answer')} ל-{replyingTo.authorName}:
+                                    </span>
+                                    <p className="text-gray-400 italic pr-5 line-clamp-2">"{replyingTo.content}"</p>
+                                </div>
+                                <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-white bg-slate-800/50 p-1.5 rounded-full transition-colors mt-[-2px] ml-[-2px]">
+                                    <X size={14} />
+                                </button>
                             </div>
-                            <p className="text-gray-400 text-xs truncate">"{replyingTo.content.slice(0, 50)}..."</p>
                         </div>
                     )}
 
                     {/* Answer Form - Opens independently when clicking write button */}
                     {showAnswerForm && (
                         user ? (
-                            <form onSubmit={handleSubmitAnswer} className="mb-4 space-y-3 bg-gray-800/30 rounded-xl p-3 border border-gray-700">
-                                <div className="flex gap-2 items-end">
-                                    <MentionTextarea
-                                        ref={mentionRef}
-                                        placeholder={`${g(currentUserProfile?.gender, 'write')} תגובה מכבדת (אפשר לתייג עם @)...`}
-                                        className="flex-1 bg-gray-800/80 border border-gray-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-white placeholder:text-gray-500 resize-none min-h-[70px] max-h-[150px]"
-                                        value={newAnswer}
-                                        onValueChange={(val) => setNewAnswer(val)}
-                                    />
-                                    <div className="flex flex-col gap-2">
-                                        <button
-                                            type="submit"
-                                            disabled={submitting || !newAnswer.trim()}
-                                            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 text-white p-3 rounded-2xl transition-colors flex items-center justify-center"
-                                        >
-                                            {submitting ? (
-                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                            ) : (
-                                                <ArrowUp size={18} />
-                                            )}
-                                        </button>
+                            <form onSubmit={handleSubmitAnswer} className="mb-5 relative group mt-1">
+                                <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-pink-500 rounded-[1.5rem] blur opacity-20 group-hover:opacity-30 transition duration-500"></div>
+                                <div className="relative bg-slate-900 shadow-inner rounded-[1.5rem] border border-white/10 p-2 sm:p-3 flex flex-col gap-3">
+                                    <div className="flex gap-2 items-end">
+                                        <MentionTextarea
+                                            ref={mentionRef}
+                                            placeholder={`${g(currentUserProfile?.gender, 'write')} תגובה מכבדת (אפשר לתייג עם @)...`}
+                                            className="flex-1 bg-transparent px-3 py-1.5 text-sm sm:text-base focus:outline-none text-white placeholder:text-gray-500 resize-none min-h-[44px] max-h-[150px]"
+                                            value={newAnswer}
+                                            onValueChange={(val) => setNewAnswer(val)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                                                    e.preventDefault();
+                                                    handleSubmitAnswer(e as unknown as React.FormEvent);
+                                                }
+                                            }}
+                                        />
+                                        <div className="flex items-center gap-1.5 pb-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowAnswerForm(false);
+                                                    setReplyingTo(null);
+                                                }}
+                                                className="text-gray-500 hover:text-gray-300 p-2.5 rounded-full transition-colors block sm:hidden"
+                                                title="סגור"
+                                            >
+                                                <X size={20} />
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={submitting || !newAnswer.trim()}
+                                                className="bg-gradient-to-br from-indigo-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all flex items-center justify-center shadow-md disabled:shadow-none flex-shrink-0"
+                                            >
+                                                {submitting ? (
+                                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                ) : (
+                                                    <ArrowUp size={22} />
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex justify-between items-center px-3 pb-1">
+                                        {/* Anonymous toggle */}
                                         <button
                                             type="button"
-                                            onClick={() => setShowAnswerForm(false)}
-                                            className="text-gray-500 hover:text-white p-2 rounded-xl transition-colors"
+                                            onClick={() => setIsAnonymousAnswer(!isAnonymousAnswer)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                                                isAnonymousAnswer 
+                                                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                                                    : 'bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800 hover:text-gray-300'
+                                            }`}
                                         >
-                                            <X size={16} />
+                                            <div className={`w-2 h-2 rounded-full transition-colors ${isAnonymousAnswer ? 'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]' : 'bg-gray-600'}`}></div>
+                                            אנונימי
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowAnswerForm(false);
+                                                setReplyingTo(null);
+                                            }}
+                                            className="text-gray-500 hover:text-gray-300 text-xs sm:text-sm font-medium transition-colors hidden sm:block"
+                                        >
+                                            ביטול
                                         </button>
                                     </div>
                                 </div>
-                                {/* Anonymous toggle */}
-                                <label className="flex items-center gap-1.5 cursor-pointer group mr-2">
-                                    <div className="relative">
-                                        <input
-                                            type="checkbox"
-                                            checked={isAnonymousAnswer}
-                                            onChange={(e) => setIsAnonymousAnswer(e.target.checked)}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-7 h-4 bg-gray-700 rounded-full peer-checked:bg-indigo-500 transition-colors"></div>
-                                        <div className="absolute top-0.5 left-0.5 w-3 h-3 bg-gray-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition-all shadow-sm"></div>
-                                    </div>
-                                    <span className={`text-xs transition-colors ${isAnonymousAnswer ? 'text-indigo-400' : 'text-gray-500 group-hover:text-gray-400'}`}>
-                                        🙈 אנונימי
-                                    </span>
-                                </label>
                             </form>
                         ) : (
                             <Link
                                 href="/login"
                                 className="mb-4 flex items-center justify-center gap-2 bg-indigo-600/20 border border-indigo-500/30 rounded-xl px-4 py-3 text-sm text-indigo-300 hover:bg-indigo-600/30 transition-colors"
                             >
-                                🔐 התחבר כדי להשאיר תשובה
+                                🔐 {g(currentUserProfile?.gender, 'login')} כדי להשאיר תשובה
                             </Link>
                         )
                     )}
@@ -1041,31 +1287,56 @@ export function QuestionCard({
                         style={expanded ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : {}}
                     >
                         {(expanded ? answers.slice(0, visibleAnswersCount) : answers.slice(0, 2)).map(ans => (
-                            <div key={ans.id} className="bg-gray-800/50 rounded-xl p-2 sm:p-3 border border-gray-700">
+                            <div key={ans.id} id={`answer-${ans.id}`} className="bg-gray-800/50 rounded-xl p-2 sm:p-3 border border-gray-700">
                                 {/* Reply Quote */}
                                 {ans.replyTo && (
-                                    <div className="bg-gray-900/50 rounded-lg p-2 mb-2 text-xs border-r-2 border-indigo-500">
-                                        <span className="text-indigo-400">↩️ {ans.replyTo.authorName}:</span>
-                                        <span className="text-gray-500 mr-1">"{ans.replyTo.content}"</span>
+                                    <div 
+                                        className={`relative bg-gradient-to-l from-indigo-900/10 to-transparent rounded-xl p-3 mb-3 text-sm border-r-4 border-indigo-500/50 flex flex-col gap-1 ${ans.replyTo.answerId ? 'cursor-pointer hover:bg-indigo-900/20 transition-colors' : ''}`}
+                                        onClick={() => {
+                                            if (ans.replyTo?.answerId) {
+                                                document.getElementById(`answer-${ans.replyTo.answerId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            }
+                                        }}
+                                    >
+                                        <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
+                                            <Reply size={14} className="scale-x-[-1]" />
+                                            {ans.replyTo.authorName}
+                                        </span>
+                                        <span className="text-gray-400 italic pr-6 line-clamp-3">"{ans.replyTo.content}"</span>
                                     </div>
                                 )}
 
                                 <div className="flex justify-between items-center mb-1">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
                                         {ans.isAnonymous ? (
                                             <>
-                                                <span className="text-xs font-bold text-gray-400">🙈 אנונימי</span>
-                                                {/* Show real author to admins */}
-                                                {isAdmin && ans.realAuthorName && (
-                                                    <span className="text-xs text-red-400/70">(באמת: {ans.realAuthorName})</span>
+                                                {isQuestionAuthorCheck(ans.authorId, ans.realAuthorId) ? (
+                                                    <span className="text-xs font-bold text-emerald-400 cursor-default">שואל השאלה</span>
+                                                ) : (
+                                                    <span className="text-xs font-bold text-gray-400 cursor-default">אנונימי</span>
+                                                )}
+                                                {/* Show real author to system admins */}
+                                                {user?.email === 'eyceyceyc139@gmail.com' && ans.realAuthorName && (
+                                                    <Link href={`/user/${encodeURIComponent(ans.realAuthorName)}`} className="text-xs text-red-400/70 hover:text-red-300 transition-colors cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                                                        (באמת: {ans.realAuthorName})
+                                                    </Link>
                                                 )}
                                             </>
                                         ) : (
-                                            <LiveAuthorDisplay
-                                                authorId={ans.authorId}
-                                                fallbackName={ans.authorName}
-                                                nameClassName="text-xs font-bold text-indigo-300"
-                                            />
+                                            <>
+                                                {isQuestionAuthorCheck(ans.authorId, ans.realAuthorId) ? (
+                                                    <Link href={`/user/${encodeURIComponent(ans.authorName)}`} className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors" onClick={(e) => e.stopPropagation()}>
+                                                        שואל השאלה
+                                                    </Link>
+                                                ) : (
+                                                    <LiveAuthorDisplay
+                                                        authorId={ans.authorId}
+                                                        fallbackName={ans.authorName}
+                                                        nameClassName="text-xs font-bold text-indigo-300"
+                                                        linkToProfile={true}
+                                                    />
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                     <span className="text-xs text-gray-500">
@@ -1127,10 +1398,11 @@ export function QuestionCard({
                                         onClick={() => {
                                             setReplyingTo(ans);
                                             setExpanded(true);
+                                            setShowAnswerForm(true);
                                         }}
-                                        className="flex items-center gap-1 text-gray-500 hover:text-indigo-400 transition-colors"
+                                        className="flex items-center gap-1 text-gray-400 hover:text-indigo-400 transition-colors font-medium ml-1"
                                     >
-                                        <Reply size={14} />
+                                        <Reply size={15} />
                                         <span>השב</span>
                                     </button>
                                     {user?.uid === ans.authorId && (
@@ -1143,14 +1415,14 @@ export function QuestionCard({
                                                 className="flex items-center gap-1 text-gray-500 hover:text-indigo-400 transition-colors"
                                             >
                                                 <Edit2 size={14} />
-                                                <span>ערוך</span>
+                                                <span>{g(currentUserProfile?.gender, 'edit')}</span>
                                             </button>
                                             <button
                                                 onClick={() => handleDeleteAnswer(ans.id, ans.authorId, ans.authorName, ans.content)}
                                                 className="flex items-center gap-1 text-gray-500 hover:text-red-400 transition-colors"
                                             >
                                                 <Trash2 size={14} />
-                                                <span>מחק</span>
+                                                <span>{g(currentUserProfile?.gender, 'delete_')}</span>
                                             </button>
                                         </>
                                     )}
@@ -1195,31 +1467,36 @@ export function QuestionCard({
                         {!expanded && answers.length > 2 && (
                             <div
                                 onClick={toggleExpanded}
-                                className="relative cursor-pointer group"
+                                className="relative cursor-pointer group hover:opacity-90 transition-opacity mt-2"
                             >
                                 {/* Show 3rd and 4th answer with same styling as expanded but blurred */}
                                 <div className="space-y-2 blur-[2px] opacity-60 pointer-events-none">
-                                    {answers.slice(2, 4).map(ans => (
-                                        <div key={ans.id} className="bg-gray-800/50 rounded-xl p-2 sm:p-3 border border-gray-700">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-xs font-bold text-gray-400">
-                                                    {ans.isAnonymous ? '🙈 אנונימי' : ans.authorName}
-                                                </span>
+                                    {answers.slice(2, 4).map(ans => {
+                                        const isAuthor = isQuestionAuthorCheck(ans.authorId, ans.realAuthorId);
+                                        const displayName = isAuthor ? 'שואל השאלה' : (ans.isAnonymous ? 'אנונימי' : ans.authorName);
+                                        return (
+                                            <div key={ans.id} className="bg-gray-800/50 rounded-xl p-2 sm:p-3 border border-gray-700">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className={`text-xs font-bold ${isAuthor ? 'text-emerald-400' : 'text-gray-400'}`}>
+                                                        {displayName}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-300 line-clamp-2 whitespace-pre-wrap break-words">
+                                                    {renderMentions(ans.content)}
+                                                </p>
                                             </div>
-                                            <p className="text-sm text-gray-300 line-clamp-2 whitespace-pre-wrap break-words">
-                                                {renderMentions(ans.content)}
-                                            </p>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 {/* Frosted glass overlay with click prompt */}
                                 <div className="absolute inset-0 backdrop-blur-[1px] bg-slate-900/30 rounded-xl flex items-center justify-center">
                                     <span className="text-indigo-400 font-medium text-sm group-hover:text-indigo-300 transition-colors bg-slate-900/50 px-3 py-1.5 rounded-lg">
-                                        הקש לפתיחת {Math.max(0, answerCount - 2)} תשובות נוספות
+                                        {g(currentUserProfile?.gender, 'tapToOpen')} {Math.max(0, answerCount - 2)} תשובות נוספות
                                     </span>
                                 </div>
                             </div>
                         )}
+
 
                         {!expanded && answers.length === 0 && (
                             <button
@@ -1232,6 +1509,7 @@ export function QuestionCard({
                     </div>
                     {/* End of answers wrapper */}
                 </div>
+                )} {/* End: type !== 'poll' */}
 
                 {/* Admin Action Modal */}
                 {showAdminModal && adminAction && (

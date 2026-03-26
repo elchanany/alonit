@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { ImageCropper } from '@/components/ui/ImageCropper';
 import { checkUsernameAvailability } from '@/services/user-level.service';
+import { g } from '@/utils/gender';
 
 interface UserSettings {
     autoSubscribeToAnswers: boolean;
@@ -211,9 +212,9 @@ export default function SettingsPage() {
     if (!user) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-gray-900 via-indigo-950 to-gray-900">
-                <p className="text-indigo-300 mb-4">התחבר כדי לגשת להגדרות</p>
+                <p className="text-indigo-300 mb-4">{g(userProfile?.gender, 'login')} כדי לגשת להגדרות</p>
                 <Link href="/login" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-full font-bold transition-colors">
-                    התחבר
+                    {g(userProfile?.gender, 'login')}
                 </Link>
             </div>
         );
@@ -391,7 +392,7 @@ export default function SettingsPage() {
                         className="w-full bg-red-900/30 border border-red-500/30 rounded-2xl p-4 flex items-center gap-3 text-red-400 hover:bg-red-900/50 transition-colors"
                     >
                         <LogOut size={20} />
-                        <span className="font-medium">התנתק</span>
+                        <span className="font-medium">{g(userProfile?.gender, 'disconnect')}</span>
                     </button>
                 </div>
             </div>

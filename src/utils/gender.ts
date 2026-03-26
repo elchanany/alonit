@@ -23,6 +23,14 @@ interface GenderedTexts {
     login: string;        // התחבר / התחברי
     register: string;     // הירשם / הירשמי
     joined: string;       // הצטרף / הצטרפה
+    disconnect: string;   // התנתק / התנתקי
+    explore: string;      // חקור / חקרי
+    follow: string;       // עקוב / עקבי
+    showMore: string;     // צפה בעוד / צפי בעוד
+    tapToOpen: string;    // הקש לפתיחת / הקישי לפתיחת
+    writeComment: string; // כתוב תגובה מכבדת / כתבי תגובה מכבדת
+    didYouMean: string;   // האם התכוונת ל / האם התכוונת ל
+    beFirst: string;      // היה הראשון / היי הראשונה
 }
 
 const MALE_TEXTS: GenderedTexts = {
@@ -43,6 +51,14 @@ const MALE_TEXTS: GenderedTexts = {
     login: 'התחבר',
     register: 'הירשם',
     joined: 'הצטרף',
+    disconnect: 'התנתק',
+    explore: 'חקור',
+    follow: 'עקוב',
+    showMore: 'צפה בעוד',
+    tapToOpen: 'הקש לפתיחת',
+    writeComment: 'כתוב תגובה מכבדת',
+    didYouMean: 'האם התכוונת',
+    beFirst: 'היה הראשון',
 };
 
 const FEMALE_TEXTS: GenderedTexts = {
@@ -63,6 +79,14 @@ const FEMALE_TEXTS: GenderedTexts = {
     login: 'התחברי',
     register: 'הירשמי',
     joined: 'הצטרפה',
+    disconnect: 'התנתקי',
+    explore: 'חקרי',
+    follow: 'עקבי',
+    showMore: 'צפי בעוד',
+    tapToOpen: 'הקישי לפתיחת',
+    writeComment: 'כתבי תגובה מכבדת',
+    didYouMean: 'האם התכוונת',
+    beFirst: 'היי הראשונה',
 };
 
 /**
