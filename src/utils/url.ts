@@ -17,5 +17,7 @@ export function generateSlug(text: string): string {
 export function getQuestionUrl(questionId: string, title?: string): string {
     if (!title) return `/question/${questionId}`;
     const slug = generateSlug(title);
-    return slug ? `/question/${questionId}/${slug}` : `/question/${questionId}`;
+    // iOS Safari history.replaceState throws a DOMException if history path contains raw non-ASCII (Hebrew) characters.
+    // It must be explicitly URL-encoded.
+    return slug ? `/question/${questionId}/${encodeURIComponent(slug)}` : `/question/${questionId}`;
 }
