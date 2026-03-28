@@ -785,7 +785,7 @@ export function QuestionCard({
                     return newSet;
                 });
                 setAnswers(prev => prev.map(a =>
-                    a.id === answerId ? { ...a, flowerCount: Math.max(0, a.flowerCount - 1) } : a
+                    a.id === answerId ? { ...a, flowerCount: Math.max(0, (a.flowerCount || 0) - 1) } : a
                 ));
             } catch (error) {
                 console.error('Error removing like:', error);
@@ -813,7 +813,7 @@ export function QuestionCard({
             });
             setLikedAnswers(prev => new Set(prev).add(answerId));
             setAnswers(prev => prev.map(a =>
-                a.id === answerId ? { ...a, flowerCount: a.flowerCount + 1 } : a
+                a.id === answerId ? { ...a, flowerCount: (a.flowerCount || 0) + 1 } : a
             ));
         } catch (error) {
             console.error('Error liking answer:', error);
@@ -857,7 +857,7 @@ export function QuestionCard({
                     return newSet;
                 });
                 setAnswers(prev => prev.map(a =>
-                    a.id === answerId ? { ...a, flowerCount: Math.max(0, a.flowerCount - 1) } : a
+                    a.id === answerId ? { ...a, flowerCount: Math.max(0, (a.flowerCount || 0) - 1) } : a
                 ));
             }
 
@@ -1286,7 +1286,10 @@ export function QuestionCard({
                         className={`space-y-2 sm:space-y-3 ${expanded ? 'flex-1 overflow-y-auto' : ''}`}
                         style={expanded ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : {}}
                     >
-                        {(expanded ? answers.slice(0, visibleAnswersCount) : answers.slice(0, 2)).map(ans => (
+                        {(expanded
+                            ? [...answers].sort((a, b) => ((b.flowerCount || 0) - (b.dislikeCount || 0)) - ((a.flowerCount || 0) - (a.dislikeCount || 0))).slice(0, visibleAnswersCount)
+                            : [...answers].sort((a, b) => ((b.flowerCount || 0) - (b.dislikeCount || 0)) - ((a.flowerCount || 0) - (a.dislikeCount || 0))).slice(0, 2)
+                        ).map(ans => (
                             <div key={ans.id} id={`answer-${ans.id}`} className="bg-gray-800/50 rounded-xl p-2 sm:p-3 border border-gray-700">
                                 {/* Reply Quote */}
                                 {ans.replyTo && (

@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowRight, Bell, MessageCircle, AlertCircle, User } from 'lucide-react';
+import { ArrowRight, Bell, MessageCircle, AlertCircle, User, BarChart2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
@@ -13,7 +13,7 @@ import { getQuestionUrl } from '@/utils/url';
 
 interface Notification {
     id: string;
-    type: 'ANSWER' | 'MESSAGE' | 'SYSTEM' | 'MENTION';
+    type: 'ANSWER' | 'MESSAGE' | 'SYSTEM' | 'MENTION' | 'POLL_VOTE' | 'POLL_MILESTONE';
     recipientId: string;
     senderId?: string;
     senderName?: string;
@@ -21,12 +21,13 @@ interface Notification {
     questionId?: string;
     questionTitle?: string;
     message: string;
+    voteCount?: number;
     read: boolean;
     createdAt: any;
 }
 
 interface GroupedNotification {
-    type: 'MESSAGE' | 'SYSTEM' | 'ANSWER' | 'MENTION';
+    type: 'MESSAGE' | 'SYSTEM' | 'ANSWER' | 'MENTION' | 'POLL_VOTE' | 'POLL_MILESTONE';
     senderId?: string;
     senderName?: string;
     conversationId?: string;
@@ -120,12 +121,22 @@ export default function NotificationsPage() {
                     notifications: relatedNotifs
                 });
             } else if (notif.type === 'ANSWER' || notif.type === 'MENTION') {
-                // Keep answer and mention notifications individual
                 processedIds.add(notif.id);
                 groups.push({
                     type: notif.type,
                     senderId: notif.senderId,
                     senderName: notif.senderName || 'משתמש',
+                    questionId: notif.questionId,
+                    questionTitle: notif.questionTitle,
+                    lastMessage: notif.message,
+                    unreadCount: notif.read ? 0 : 1,
+                    latestTimestamp: notif.createdAt,
+                    notifications: [notif]
+                });
+            } else if (notif.type === 'POLL_VOTE' || notif.type === 'POLL_MILESTONE') {
+                processedIds.add(notif.id);
+                groups.push({
+                    type: notif.type,
                     questionId: notif.questionId,
                     questionTitle: notif.questionTitle,
                     lastMessage: notif.message,
@@ -183,6 +194,8 @@ export default function NotificationsPage() {
             }
         } else if ((group.type === 'ANSWER' || group.type === 'MENTION') && group.questionId) {
             router.push(getQuestionUrl(group.questionId, group.questionTitle));
+        } else if ((group.type === 'POLL_VOTE' || group.type === 'POLL_MILESTONE') && group.questionId) {
+            router.push(getQuestionUrl(group.questionId, group.questionTitle));
         }
     };
 
@@ -192,6 +205,8 @@ export default function NotificationsPage() {
             case 'MENTION': return <User size={12} className="text-cyan-400" />;
             case 'MESSAGE': return <MessageCircle size={12} className="text-pink-400" />;
             case 'SYSTEM': return <AlertCircle size={12} className="text-orange-400" />;
+            case 'POLL_VOTE': return <BarChart2 size={12} className="text-violet-400" />;
+            case 'POLL_MILESTONE': return <BarChart2 size={12} className="text-yellow-400" />;
             default: return <Bell size={12} className="text-gray-400" />;
         }
     };
@@ -294,6 +309,12 @@ export default function NotificationsPage() {
                                             {group.type === 'SYSTEM' && (
                                                 <p>
                                                     <span className="font-bold text-orange-400">מערכת:</span> {group.lastMessage}
+                                                </p>
+                                            )}
+                                            {(group.type === 'POLL_VOTE' || group.type === 'POLL_MILESTONE') && (
+                                                <p>
+                                                    <span className="font-bold text-violet-400">📊 סקר:</span> {group.lastMessage}
+                                                    {group.questionTitle && <span className="text-indigo-300 font-semibold"> ← לחץ לפתיחת הסקר</span>}
                                                 </p>
                                             )}
                                         </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Question } from '@/services/recommendation.service';
+import { MessageCircle, Heart } from 'lucide-react';
 
 interface RelatedQuestionsTilesProps {
     questions: Question[];
@@ -26,17 +27,6 @@ const TILE_STYLES = [
 ];
 
 export function RelatedQuestionsTiles({ questions, side, onQuestionClick }: RelatedQuestionsTilesProps) {
-    const [visible, setVisible] = useState(false);
-    const [key, setKey] = useState(0);
-
-    // Trigger animation when questions change
-    useEffect(() => {
-        setVisible(false);
-        setKey(prev => prev + 1);
-        const timer = setTimeout(() => setVisible(true), 150);
-        return () => clearTimeout(timer);
-    }, [questions]);
-
     if (questions.length === 0) return null;
 
     return (
@@ -46,44 +36,31 @@ export function RelatedQuestionsTiles({ questions, side, onQuestionClick }: Rela
                 ${side === 'left' ? 'items-start' : 'items-end'} // Push away from center
             `}
         >
-            <h4 className={`
-                text-xs text-indigo-400 uppercase tracking-widest font-bold mb-8 opacity-70
-                ${side === 'left' ? 'text-left pl-2' : 'text-right pr-2'} 
-                w-full
-            `}>
-                {side === 'left' ? '✨ שאלות קשורות' : '🔥 עוד בנושא'}
-            </h4>
-
             <div className={`
                 flex flex-col gap-6 w-full 
                 ${side === 'left' ? 'items-start' : 'items-end'} // Align items to outer edges
-            `} key={key}>
+            `}>
                 {questions.map((question, index) => {
                     // Pseduo-random mix to ensure variety without strict ordering
                     // Using primes to scatter the patterns
                     const styleIndex = (index * 7 + 3) % TILE_STYLES.length;
                     const style = TILE_STYLES[styleIndex];
 
-                    // Very subtle fadeIn only
-                    const delay = `${index * 75}ms`;
-
                     return (
                         <div
-                            key={question.id}
+                            key={index} // Use index to prevent unmounting and ensure only text swaps
                             onClick={() => onQuestionClick(question.id)}
                             className={`
                                 group cursor-pointer relative flex flex-col justify-between
                                 ${style.width} ${style.height}
-                                bg-slate-900/60 hover:bg-slate-800/80
-                                backdrop-blur-xl
-                                border border-white/5 hover:border-indigo-500/40
-                                rounded-3xl p-5
-                                transition-all duration-500 ease-out
-                                hover:translate-y-[-4px] hover:shadow-2xl hover:shadow-indigo-900/20
-                                ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'} 
+                                bg-gradient-to-br from-white/[0.03] to-white/[0.01] hover:from-white/[0.07] hover:to-white/[0.02]
+                                backdrop-blur-2xl
+                                border border-white/5 hover:border-indigo-500/30
+                                rounded-[24px] p-5
+                                transition-all duration-300 ease-out
+                                hover:translate-y-[-4px] shadow-2xl shadow-black/40 hover:shadow-indigo-500/20
                             `}
                             style={{
-                                transitionDelay: visible ? delay : '0ms',
                                 maxWidth: '100%'
                             }}
                         >
@@ -102,17 +79,19 @@ export function RelatedQuestionsTiles({ questions, side, onQuestionClick }: Rela
                             </p>
 
                             {/* Stats Footer */}
-                            <div className="flex items-center justify-between text-[11px] text-gray-500 mt-auto pt-4 border-t border-white/5 group-hover:border-white/10 transition-colors">
-                                <span className="truncate max-w-[50%] opacity-50 font-medium">{question.authorName}</span>
-                                <div className="flex items-center gap-2 opacity-60">
+                            <div className="flex items-center justify-between text-[11px] text-gray-500 mt-auto pt-4 border-t border-white/5 group-hover:border-white/15 transition-colors">
+                                <span className="truncate max-w-[50%] opacity-60 font-medium tracking-wide">{question.authorName}</span>
+                                <div className="flex items-center gap-3 opacity-70 group-hover:opacity-100 transition-opacity">
                                     {(question.answerCount > 0) && (
-                                        <span className="flex items-center gap-1">
-                                            <span className="text-[10px]">🗨</span> {question.answerCount}
+                                        <span className="flex items-center gap-1.5 transition-colors group-hover:text-indigo-300">
+                                            <MessageCircle size={13} strokeWidth={2.5} />
+                                            <span className="font-semibold text-[11px]">{question.answerCount}</span>
                                         </span>
                                     )}
                                     {(question.flowerCount > 0) && (
-                                        <span className="flex items-center gap-1">
-                                            <span className="text-[10px] grayscale group-hover:grayscale-0 transition-all">❤️</span> {question.flowerCount}
+                                        <span className="flex items-center gap-1.5 transition-colors group-hover:text-pink-400">
+                                            <Heart size={13} strokeWidth={2.5} className="group-hover:fill-pink-400/20 transition-all" />
+                                            <span className="font-semibold text-[11px]">{question.flowerCount}</span>
                                         </span>
                                     )}
                                 </div>

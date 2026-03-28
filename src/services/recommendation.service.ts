@@ -1,4 +1,4 @@
-import { collection, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import semanticClustersRaw from '@/lib/semantic-clusters.json';
 
@@ -84,22 +84,37 @@ export async function findRelatedQuestions(
     allQuestions: Question[],
     maxResults: number = 6
 ): Promise<RelatedQuestion[]> {
-    const currentKeywords = extractKeywords(currentQuestion.title + ' ' + currentQuestion.content);
+    const rawKeywords = extractKeywords(currentQuestion.title + ' ' + currentQuestion.content);
+    
+    // Semantic Vector Expansion: Expand keywords using local clusters to find dimensionally close areas
+    let expandedTerms = [...rawKeywords];
+    rawKeywords.forEach(term => {
+        for (const [clusterId, words] of Object.entries(semanticClusters)) {
+            if (words.includes(term) || clusterId === term) {
+                expandedTerms.push(clusterId);
+                words.forEach(w => expandedTerms.push(w));
+            }
+        }
+    });
+    const currentKeywordsExpanded = Array.from(new Set(expandedTerms));
     
     const scoredQuestions: RelatedQuestion[] = allQuestions
         .filter(q => q.id !== currentQuestion.id) // Exclude current question
         .map(question => {
             let score = 0;
             
-            // Category match (highest priority)
+            // Category match (important dimension)
             if (question.category === currentQuestion.category) {
-                score += 10;
+                score += 15;
             }
             
-            // Keyword overlap
+            // Vector proximity calculation via Semantic Keyword Expansion
             const questionKeywords = extractKeywords(question.title + ' ' + question.content);
-            const overlap = calculateKeywordOverlap(currentKeywords, questionKeywords);
-            score += overlap * 3;
+            const rawOverlap = calculateKeywordOverlap(rawKeywords, questionKeywords);
+            const semanticOverlap = calculateKeywordOverlap(currentKeywordsExpanded, questionKeywords);
+            
+            score += rawOverlap * 5; // Direct word matches are worth more
+            score += (semanticOverlap - rawOverlap) * 2; // Semantically/vectorially similar words give bonus
             
             // Recency bonus (questions from last 7 days get a boost)
             if (question.createdAt?.toDate) {
@@ -149,6 +164,8 @@ export interface UserAffinityProfile {
     authorWeights: { [authorId: string]: number };
     keywordWeights: { [keyword: string]: number };
     seenQuestions: string[];
+    isDirty?: boolean;
+    lastSyncAt?: number;
 }
 
 const AFFINITY_STORAGE_KEY = 'alonit_user_affinities';
@@ -157,7 +174,7 @@ const MAX_SEEN_HISTORY = 100; // Keep track of last 100 seen questions
 // Get local affinity profile
 export function getStoredAffinities(): UserAffinityProfile {
     if (typeof window === 'undefined') {
-        return { categoryWeights: {}, authorWeights: {}, keywordWeights: {}, seenQuestions: [] };
+        return { categoryWeights: {}, authorWeights: {}, keywordWeights: {}, seenQuestions: [], isDirty: false, lastSyncAt: 0 };
     }
     
     try {
@@ -168,14 +185,16 @@ export function getStoredAffinities(): UserAffinityProfile {
                 categoryWeights: parsed.categoryWeights || {},
                 authorWeights: parsed.authorWeights || {},
                 keywordWeights: parsed.keywordWeights || {},
-                seenQuestions: parsed.seenQuestions || []
+                seenQuestions: parsed.seenQuestions || [],
+                isDirty: parsed.isDirty || false,
+                lastSyncAt: parsed.lastSyncAt || 0
             };
         }
     } catch (e) {
         console.error("Error reading affinities", e);
     }
     
-    return { categoryWeights: {}, authorWeights: {}, keywordWeights: {}, seenQuestions: [] };
+    return { categoryWeights: {}, authorWeights: {}, keywordWeights: {}, seenQuestions: [], isDirty: false, lastSyncAt: 0 };
 }
 
 // Save local affinity profile
@@ -199,28 +218,28 @@ export function trackInteraction(question: Question, type: InteractionType, dura
     const profile = getStoredAffinities();
     let weightDelta = 0;
     
+    // TIKTOK 5-POINT ENGAGEMENT ALGORITHM WEIGHTS
     switch (type) {
         case 'view':
-            // "Short View" penalty vs "Long View" reward
             if (durationMs < 2000) {
-                weightDelta = -1; // Skipped quickly
-            } else if (durationMs >= 3000 && durationMs < 10000) {
-                weightDelta = 1; // Watched normally
-            } else if (durationMs >= 10000) {
-                weightDelta = 3; // Deep engagement (read long content)
+                weightDelta = -2; // Skipped quickly
+            } else if (durationMs >= 5000 && durationMs < 15000) {
+                weightDelta = 4; // Watched to completion equivalent
+            } else if (durationMs >= 15000) {
+                weightDelta = 8; // Rewatch / Deep engagement equivalent
             }
             break;
         case 'like':
-            weightDelta = 5;
+            weightDelta = 2; // Base 1x
             break;
         case 'dislike':
-            weightDelta = -5;
+            weightDelta = -2;
             break;
         case 'answer':
-            weightDelta = 10;
+            weightDelta = 4; // Comment 2x
             break;
         case 'share':
-            weightDelta = 10;
+            weightDelta = 6; // Share 3x
             break;
     }
 
@@ -238,12 +257,14 @@ export function trackInteraction(question: Question, type: InteractionType, dura
             // Authors weight is slightly less aggressive than category
         }
         
-        // Update keyword weights (TF-IDF style vector)
+            // Update keyword weights (TF-IDF style vector)
         const keywords = extractKeywords(question.title + ' ' + (question.content || ''));
         keywords.forEach(kw => {
             profile.keywordWeights[kw] = (profile.keywordWeights[kw] || 0) + (weightDelta * 0.2); // Smaller increments for words
             profile.keywordWeights[kw] = Math.max(-5, Math.min(20, profile.keywordWeights[kw])); // Cap word influence
         });
+
+        profile.isDirty = true;
     }
     
     // Add to seen history if not already there
@@ -252,6 +273,7 @@ export function trackInteraction(question: Question, type: InteractionType, dura
         if (profile.seenQuestions.length > MAX_SEEN_HISTORY) {
             profile.seenQuestions.shift(); // Remove oldest
         }
+        profile.isDirty = true;
     }
     
     saveStoredAffinities(profile);
@@ -264,9 +286,10 @@ export function trackEvent(
 ) {
     const profile = getStoredAffinities();
     
+    let weight = 0;
+    
     // Process keyword additions
     if (data.keywords) {
-        let weight = 0;
         if (type === 'SEARCH') weight = 2; // Searching for it shows high intent
         else if (type === 'ASK_QUESTION') weight = 10; // Asking about it shows extremely high intent
         
@@ -287,6 +310,12 @@ export function trackEvent(
 
     if (data.authorId && type === 'VIEW_PROFILE' && data.authorId !== 'anonymous') {
         profile.authorWeights[data.authorId] = (profile.authorWeights[data.authorId] || 0) + 2;
+        profile.isDirty = true;
+    }
+    
+    // Catch-all dirty flag if any of the above modified weights
+    if (weight > 0 || data.category || (data.authorId && data.authorId !== 'anonymous')) {
+        profile.isDirty = true;
     }
     
     saveStoredAffinities(profile);
@@ -305,25 +334,27 @@ export function rankFeedForUser(pool: Question[]): Question[] {
         let score = 0;
         
         // --- BASE SCORE (Global Quality & Relevance) --- //
-        // Base Engagement
-        score += Math.min((question.answerCount || 0) * 1, 10);
-        score += Math.min((question.flowerCount || 0) * 0.5, 5);
+        // P_interaction proxy
+        let globalScore = 0;
+        globalScore += Math.min((question.answerCount || 0) * 2, 10);
+        globalScore += Math.min((question.flowerCount || 0) * 1, 5);
         
-        // Base Recency (up to 10 points)
+        // Base Recency (Steeper time decay to keep feed ultra-fresh)
         if (question.createdAt?.toDate) {
             const daysOld = (Date.now() - question.createdAt.toDate().getTime()) / (1000 * 60 * 60 * 24);
-            if (daysOld < 3) score += 10;
-            else if (daysOld < 7) score += 5;
-            else if (daysOld < 14) score += 2;
+            if (daysOld < 1) globalScore += 20;
+            else if (daysOld < 3) globalScore += 10;
+            else if (daysOld < 7) globalScore += 2;
         }
 
-        // --- AFFINITY SCORE (Personalization / Exploitation) --- //
+        // --- AFFINITY SCORE (V_interaction proxy / Personalization) --- //
+        let userScore = 0;
         if (question.category && profile.categoryWeights[question.category]) {
-            score += profile.categoryWeights[question.category] * 2; // Strong factor
+            userScore += profile.categoryWeights[question.category] * 3; // Enhanced category multiplier
         }
         
         if (question.authorId && profile.authorWeights[question.authorId]) {
-            score += profile.authorWeights[question.authorId];
+            userScore += profile.authorWeights[question.authorId] * 2;
         }
 
         // Feature Vector Dot Product (Keyword similarity)
@@ -334,12 +365,16 @@ export function rankFeedForUser(pool: Question[]): Question[] {
                 keywordScore += profile.keywordWeights[kw];
             }
         });
-        score += keywordScore;
+        userScore += keywordScore;
+
+        // TikTok formula implementation: (P * V approach) 
+        // We add global engagement/recency to user contextual weights
+        score = (globalScore + 1) + userScore;
 
         // --- SEEN PENALTY --- //
         // If seen recently, heavily penalize so they don't see it twice in the same session
         if (profile.seenQuestions.includes(question.id)) {
-            score -= 100; // Almost guarantee it goes to the bottom
+            score -= 500; // Almost guarantee it goes to the bottom
         }
 
         return { question, score, rand: Math.random() };
@@ -482,3 +517,76 @@ export function searchAndRank(pool: Question[], query: string): Question[] {
         .sort((a, b) => b.score - a.score)
         .map(s => s.question);
 }
+
+// ==========================================
+// LAZY SYNC SYSTEM
+// ==========================================
+
+const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function syncAffinitiesToFirestore(userId: string) {
+    if (!userId || typeof window === 'undefined') return;
+    
+    const profile = getStoredAffinities();
+    
+    // Check if dirty (changes exist)
+    if (!profile.isDirty) return;
+    
+    // Check if 24 hours have passed since last sync
+    const now = Date.now();
+    if (profile.lastSyncAt && (now - profile.lastSyncAt) < SYNC_INTERVAL_MS) {
+        return; // Too soon to sync again
+    }
+    
+    try {
+        const ref = doc(db, 'user_affinities', userId);
+        
+        // Strip out local flags before saving
+        const { isDirty, lastSyncAt, ...dataToSave } = profile;
+        
+        await setDoc(ref, {
+            ...dataToSave,
+            updatedAt: now
+        }, { merge: true });
+        
+        // Mark as synced locally
+        profile.isDirty = false;
+        profile.lastSyncAt = now;
+        saveStoredAffinities(profile);
+        
+        console.log('✅ Vector Affinities lazy-synced to Firestore (1/day max)');
+    } catch (error) {
+        console.error('Failed to sync affinities', error);
+    }
+}
+
+export async function fetchAffinitiesFromFirestore(userId: string) {
+    if (!userId || typeof window === 'undefined') return;
+    
+    const profile = getStoredAffinities();
+    const hasData = Object.keys(profile.categoryWeights).length > 0 || profile.seenQuestions.length > 0;
+    
+    // Only fetch if local profile is completely empty (e.g., fresh login on new device)
+    if (!hasData) {
+        try {
+            const ref = doc(db, 'user_affinities', userId);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                const data = snap.data();
+                const newProfile: UserAffinityProfile = {
+                    categoryWeights: data.categoryWeights || {},
+                    authorWeights: data.authorWeights || {},
+                    keywordWeights: data.keywordWeights || {},
+                    seenQuestions: data.seenQuestions || [],
+                    isDirty: false,
+                    lastSyncAt: data.updatedAt || Date.now()
+                };
+                saveStoredAffinities(newProfile);
+                console.log('📥 Vector Affinities restored from Firestore');
+            }
+        } catch (error) {
+            console.error('Failed to fetch affinities', error);
+        }
+    }
+}
+

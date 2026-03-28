@@ -23,12 +23,20 @@ const allPossibleTags = Array.from(new Set([
 
 const CATEGORIES = [
     { id: 1, name: 'חברים', icon: '🫂' },
-    { id: 2, name: 'אהבה', icon: '❤️' },
+    { id: 2, name: 'זוגיות ואהבה', icon: '❤️' },
     { id: 3, name: 'טכנולוגיה', icon: '💻' },
     { id: 4, name: 'צבא', icon: '🪖' },
     { id: 5, name: 'לימודים', icon: '📚' },
     { id: 6, name: 'מוזיקה', icon: '🎵' },
     { id: 7, name: 'סרטים וסדרות', icon: '🎬' },
+    { id: 9, name: 'גיימינג', icon: '🎮' },
+    { id: 10, name: 'ספורט', icon: '⚽' },
+    { id: 11, name: 'אופנה וטיפוח', icon: '💄' },
+    { id: 12, name: 'אוכל ובישול', icon: '🍔' },
+    { id: 13, name: 'רכב', icon: '🚗' },
+    { id: 14, name: 'בריאות ונפש', icon: '🧘' },
+    { id: 15, name: 'משפחה', icon: '👨‍👩‍👧‍👦' },
+    { id: 16, name: 'פיננסים וקריירה', icon: '💰' },
     { id: 8, name: 'התייעצות כללית', icon: '🤔' },
 ];
 

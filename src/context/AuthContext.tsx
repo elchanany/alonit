@@ -15,6 +15,7 @@ import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { createUserProfile, getUserProfile } from '@/services/user-level.service';
 import { fixUserProfile } from '@/services/fix-profile.service';
+import { fetchAffinitiesFromFirestore, syncAffinitiesToFirestore } from '@/services/recommendation.service';
 import { UserProfile, UserRole } from '@/types/user-levels';
 
 interface AuthContextType {
@@ -105,6 +106,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     }
 
                     setUserProfile(profile);
+                    
+                    // Fetch vector affinities if local is empty (e.g., fresh login)
+                    fetchAffinitiesFromFirestore(user.uid);
                 } catch (error) {
                     console.error("Error fetching/creating user profile:", error);
                 }
@@ -232,6 +236,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
+        if (user) {
+            await syncAffinitiesToFirestore(user.uid);
+        }
         try {
             await firebaseSignOut(auth);
             setUserProfile(null);
@@ -254,6 +261,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userProfile &&
         !userProfile.isProfileCompleted
     );
+
+    // Sync affinities when user leaves or backgrounds app
+    useEffect(() => {
+        if (!user) return;
+        
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                syncAffinitiesToFirestore(user.uid);
+            }
+        };
+        
+        const handleBeforeUnload = () => {
+            syncAffinitiesToFirestore(user.uid);
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            // Also try to sync on unmount (e.g. context destroyed)
+            syncAffinitiesToFirestore(user.uid);
+        };
+    }, [user]);
 
     return (
         <AuthContext.Provider value={{ user, userProfile, loading, isVerified, needsOnboarding, signInWithGoogle, signInWithEmail, signUpWithEmail, resendVerification, signOut, refreshProfile }}>
