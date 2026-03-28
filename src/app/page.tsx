@@ -57,28 +57,23 @@ export default function Home() {
     useEffect(() => {
         const q = query(collection(db, 'questions'), orderBy('createdAt', 'desc'), limit(INITIAL_LOAD));
 
-        const unsubscribe = onSnapshot(q,
-            (snapshot) => {
-                const docs = snapshot.docs.map(doc => {
-                    const data = doc.data();
-                    return {
-                        id: doc.id,
-                        ...data,
-                        timeAgo: data.createdAt?.toDate ? formatDistanceToNow(data.createdAt.toDate(), { addSuffix: true, locale: he }) : 'עכשיו'
-                    } as Question;
-                });
-                setQuestions(rankFeedForUser(docs as any) as Question[]); // Rank the pool based on user affinities
-                setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
-                setHasMore(snapshot.docs.length >= INITIAL_LOAD);
-                setLoading(false);
-            },
-            (error) => {
-                console.error("Firestore Error:", error);
-                setLoading(false);
-            }
-        );
-
-        return () => unsubscribe();
+        getDocs(q).then((snapshot) => {
+            const docs = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    timeAgo: data.createdAt?.toDate ? formatDistanceToNow(data.createdAt.toDate(), { addSuffix: true, locale: he }) : 'עכשיו'
+                } as Question;
+            });
+            setQuestions(rankFeedForUser(docs as any) as Question[]); // Rank the pool based on user affinities
+            setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+            setHasMore(snapshot.docs.length >= INITIAL_LOAD);
+            setLoading(false);
+        }).catch((error) => {
+            console.error("Firestore Error:", error);
+            setLoading(false);
+        });
     }, []);
 
     // Load more questions when approaching end
