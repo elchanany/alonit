@@ -197,17 +197,36 @@ export default function Home() {
 
     if (loading) {
         return (
-            <div className="h-screen w-full flex items-center justify-center bg-black text-white">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black text-white">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                     <p className="animate-pulse">טוען את הפיד...</p>
                 </div>
             </div>
         );
     }
 
+    // iOS Safari-safe container height calculation
+    // Safari has bugs with `fixed` + `100dvh` + `snap-mandatory` causing 0-height containers
+    // We use CSS custom properties set via JS as the ultimate fallback
+    const feedHeight = 'calc(100vh - 7.5rem)';
+    const feedHeightMd = 'calc(100vh - 4rem)';
+
     return (
-        <main className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-black z-0">
+        <main
+            className="absolute left-0 right-0 bg-black z-0"
+            style={{
+                top: '3.5rem',   // h-14 = 3.5rem (header mobile)
+                bottom: '4rem',  // h-16 = 4rem (mobile nav)
+            }}
+        >
+            {/* Desktop: override bottom to 0 (no mobile nav) */}
+            <style jsx>{`
+                @media (min-width: 768px) {
+                    main { top: 4rem !important; bottom: 0 !important; }
+                }
+            `}</style>
+
             <div className="h-full w-full flex justify-center items-stretch">
                 {/* Left Sidebar - Related Questions (Desktop only) */}
                 <div className="hidden lg:flex flex-1 justify-start min-w-0 pl-4">
@@ -222,7 +241,13 @@ export default function Home() {
                 <div
                     ref={scrollContainerRef}
                     onScroll={handleScroll}
-                    className="w-full max-w-lg overflow-y-auto snap-y snap-mandatory h-full no-scrollbar relative shrink-0"
+                    className="w-full max-w-lg no-scrollbar relative shrink-0"
+                    style={{
+                        overflowY: 'auto',
+                        height: '100%',
+                        WebkitOverflowScrolling: 'touch',
+                        scrollSnapType: 'y mandatory',
+                    }}
                 >
                     {questions.length === 0 ? (
                         <div className="h-full w-full flex flex-col items-center justify-center text-indigo-300 p-6 text-center">
@@ -234,7 +259,12 @@ export default function Home() {
                         questions.map((question, index) => (
                             <div
                                 key={question.id}
-                                className="h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-4rem)] w-full snap-start snap-always flex items-center justify-center py-2"
+                                className="w-full flex items-center justify-center py-2"
+                                style={{
+                                    height: feedHeight,
+                                    scrollSnapAlign: 'start',
+                                    scrollSnapStop: 'always',
+                                }}
                             >
                                 {/* Question Card with rounded edges like TikTok */}
                                 <div className="w-full h-full rounded-2xl overflow-hidden">

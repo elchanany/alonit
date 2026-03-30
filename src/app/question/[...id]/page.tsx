@@ -218,8 +218,22 @@ export default function QuestionPage() {
         );
     }
 
+    const feedHeight = 'calc(100vh - 7.5rem)';
+
     return (
-        <main className="fixed inset-0 top-14 md:top-16 bottom-16 md:bottom-0 bg-black z-0">
+        <main
+            className="absolute left-0 right-0 bg-black z-0"
+            style={{
+                top: '3.5rem',
+                bottom: '4rem',
+            }}
+        >
+            <style jsx>{`
+                @media (min-width: 768px) {
+                    main { top: 4rem !important; bottom: 0 !important; }
+                }
+            `}</style>
+
             {/* Back Button Overlay */}
             <div className="absolute top-4 right-4 z-50">
                <button onClick={() => router.push('/')} className="bg-black/50 hover:bg-black/70 backdrop-blur-md p-2 rounded-full text-white transition">
@@ -241,12 +255,23 @@ export default function QuestionPage() {
                 <div
                     ref={scrollContainerRef}
                     onScroll={handleScroll}
-                    className="w-full max-w-lg overflow-y-auto snap-y snap-mandatory h-full no-scrollbar relative shrink-0"
+                    className="w-full max-w-lg no-scrollbar relative shrink-0"
+                    style={{
+                        overflowY: 'auto',
+                        height: '100%',
+                        WebkitOverflowScrolling: 'touch',
+                        scrollSnapType: 'y mandatory',
+                    }}
                 >
                     {questions.map((question, index) => (
                         <div
                             key={question.id + index}
-                            className="h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-4rem)] w-full snap-start snap-always flex items-center justify-center py-2"
+                            className="w-full flex items-center justify-center py-2"
+                            style={{
+                                height: feedHeight,
+                                scrollSnapAlign: 'start',
+                                scrollSnapStop: 'always',
+                            }}
                         >
                             {/* Question Card with rounded edges like TikTok */}
                             <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl">
