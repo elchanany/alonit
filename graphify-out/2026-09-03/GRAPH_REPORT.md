@@ -1,16 +1,16 @@
 # Graph Report - alonit  (2026-09-03)
 
 ## Corpus Check
-- 95 files · ~86,001 words
+- 95 files · ~86,736 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 522 nodes · 947 edges · 40 communities (31 shown, 9 thin omitted)
+- 522 nodes · 956 edges · 40 communities (31 shown, 9 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `961cdb8d`
+- Built from commit: `c762270b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -53,12 +53,12 @@
 1. `useAuth()` - 48 edges
 2. `db` - 22 edges
 3. `getUserProfile()` - 22 edges
-4. `compilerOptions` - 15 edges
-5. `getQuestionUrl()` - 14 edges
-6. `useToast()` - 12 edges
-7. `logActionAndNotify()` - 12 edges
-8. `UserProfile` - 12 edges
-9. `What You Must Do When Invoked` - 12 edges
+4. `getQuestionUrl()` - 16 edges
+5. `compilerOptions` - 15 edges
+6. `What You Must Do When Invoked` - 12 edges
+7. `useToast()` - 12 edges
+8. `logActionAndNotify()` - 12 edges
+9. `UserProfile` - 12 edges
 10. `מערכת דירוג שתיל-גזע-אלון 🌱🌳🌲` - 11 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -66,12 +66,12 @@
   src/app/login/page.tsx → src/context/AuthContext.tsx
 - `useLiveAuthorProfile()` --calls--> `getUserProfile()`  [EXTRACTED]
   src/components/ui/LiveAuthorDisplay.tsx → src/services/user-level.service.ts
-- `Home()` --calls--> `useAuth()`  [EXTRACTED]
-  src/app/page.tsx → src/context/AuthContext.tsx
-- `Header()` --calls--> `useAuth()`  [EXTRACTED]
-  src/components/layout/Header.tsx → src/context/AuthContext.tsx
 - `AdminPage()` --calls--> `useAuth()`  [EXTRACTED]
   src/app/admin/page.tsx → src/context/AuthContext.tsx
+- `AskPage()` --calls--> `useAuth()`  [EXTRACTED]
+  src/app/ask/page.tsx → src/context/AuthContext.tsx
+- `ChatPage()` --calls--> `useAuth()`  [EXTRACTED]
+  src/app/conversations/[id]/page.tsx → src/context/AuthContext.tsx
 
 ## Import Cycles
 - None detected.
@@ -80,7 +80,7 @@
 
 ### Community 0 - "useAuth"
 Cohesion: 0.08
-Nodes (38): AdminPage(), Conversation, ConversationsPage(), DebugPage(), Home(), ProgressRoute(), SetupProfilePage(), AdminPanel() (+30 more)
+Nodes (37): AdminPage(), Conversation, ConversationsPage(), DebugPage(), ProgressRoute(), SetupProfilePage(), AdminPanel(), ForceFix() (+29 more)
 
 ### Community 1 - "What You Must Do When Invoked"
 Cohesion: 0.08
@@ -88,7 +88,7 @@ Nodes (24): For /graphify add and --watch, For /graphify query, For the commit h
 
 ### Community 2 - "recommendation.service.ts"
 Cohesion: 0.09
-Nodes (41): GroupedNotification, Notification, NotificationsPage(), Question, Question, QuestionPage(), SearchContent(), UserProfile (+33 more)
+Nodes (42): GroupedNotification, Notification, NotificationsPage(), Home(), Question, Question, QuestionPage(), SearchContent() (+34 more)
 
 ### Community 3 - "OnboardingModal.tsx"
 Cohesion: 0.11
@@ -175,7 +175,7 @@ Cohesion: 0.14
 Nodes (18): allPossibleTags, AskPage(), CATEGORIES, semanticClusters, Answer, AnswersModal(), AnswersModalProps, MentionTextarea (+10 more)
 
 ## Knowledge Gaps
-- **206 isolated node(s):** `inter`, `metadata`, `viewport`, `Question`, `QuestionCardProps` (+201 more)
+- **206 isolated node(s):** `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)`, `Step 1 - Ensure graphify is installed`, `Step 2 - Detect files` (+201 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -183,16 +183,16 @@ Nodes (18): allPossibleTags, AskPage(), CATEGORIES, semanticClusters, Answer, An
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `useAuth()` connect `useAuth` to `recommendation.service.ts`, `OnboardingModal.tsx`, `QuestionCard.tsx`, `Header.tsx`, `ask/page.tsx`, `[id]/page.tsx`?**
-  _High betweenness centrality (0.046) - this node is a cross-community bridge._
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **Why does `db` connect `recommendation.service.ts` to `useAuth`, `OnboardingModal.tsx`, `QuestionCard.tsx`, `Header.tsx`, `ask/page.tsx`, `[id]/page.tsx`?**
   _High betweenness centrality (0.023) - this node is a cross-community bridge._
 - **Why does `getUserProfile()` connect `useAuth` to `[id]/page.tsx`, `level-integration-examples.ts`, `OnboardingModal.tsx`, `QuestionCard.tsx`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **What connects `inter`, `metadata`, `viewport` to the rest of the system?**
+- **What connects `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)` to the rest of the system?**
   _206 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `useAuth` be split into smaller, more focused modules?**
-  _Cohesion score 0.07885304659498207 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08090957165520889 - nodes in this community are weakly interconnected._
 - **Should `What You Must Do When Invoked` be split into smaller, more focused modules?**
   _Cohesion score 0.08 - nodes in this community are weakly interconnected._
 - **Should `recommendation.service.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.0899854862119013 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09084556254367575 - nodes in this community are weakly interconnected._

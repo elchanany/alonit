@@ -15,9 +15,9 @@
     "semantic_hash": "da547da2ebeb322abd0257ae82d0f1bf"
   },
   "next.config.mjs": {
-    "mtime": 1769721431.7242248,
-    "ast_hash": "5f0d251f76a0439cf587e8e3590948e6",
-    "semantic_hash": "5f0d251f76a0439cf587e8e3590948e6"
+    "mtime": 1788456140.3342297,
+    "ast_hash": "b71d885d961ad4030c43a58130d88585",
+    "semantic_hash": ""
   },
   "package.json": {
     "mtime": 1769715917.0567508,
@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "src/app/login/page.tsx": {
-    "mtime": 1788454788.2951183,
-    "ast_hash": "b3bfd38e83721b4d0deb4af892cd5869",
+    "mtime": 1788456239.4030883,
+    "ast_hash": "a675373ccfe09ebce438d41868c73850",
     "semantic_hash": ""
   },
   "src/app/moderation/page.tsx": {
@@ -280,8 +280,8 @@
     "semantic_hash": "baec27438d91b3477e1495d7dc19aa4f"
   },
   "src/context/AuthContext.tsx": {
-    "mtime": 1788455663.522964,
-    "ast_hash": "d3c81ad9812e2860d4a3470dc9b99b1b",
+    "mtime": 1788456207.1887686,
+    "ast_hash": "7ab3a6d991598ee10be50db364dfb276",
     "semantic_hash": ""
   },
   "src/context/ToastContext.tsx": {
@@ -490,8 +490,8 @@
     "semantic_hash": ""
   },
   "src/components/ui/SpotlightTour.tsx": {
-    "mtime": 1788455566.8967977,
-    "ast_hash": "970cfee9a0571630ac8debd4cbc41f5d",
+    "mtime": 1788456174.3136754,
+    "ast_hash": "4478d587c9f141499f48eebf863ceab5",
     "semantic_hash": ""
   }
 }

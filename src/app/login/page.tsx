@@ -110,6 +110,12 @@ export default function LoginPage() {
                         </button>
                     </div>
 
+                    {error && (
+                        <div className="text-red-300 text-xs text-center bg-red-900/40 border border-red-700/60 p-3 rounded-xl mb-4 leading-relaxed">
+                            {error}
+                        </div>
+                    )}
+
                     {/* Divider */}
                     <div className="flex items-center gap-4 my-6">
                         <div className="flex-1 h-px bg-gray-700"></div>
