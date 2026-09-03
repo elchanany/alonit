@@ -1,16 +1,16 @@
 # Graph Report - alonit  (2026-09-03)
 
 ## Corpus Check
-- 95 files · ~86,736 words
+- 95 files · ~86,776 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 522 nodes · 956 edges · 40 communities (31 shown, 9 thin omitted)
+- 522 nodes · 961 edges · 39 communities (30 shown, 9 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `c762270b`
+- Built from commit: `4c55a84b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -47,40 +47,39 @@
 - AGENTS.md
 - extraction-spec.md
 - Header.tsx
-- ask/page.tsx
 
 ## God Nodes (most connected - your core abstractions)
-1. `useAuth()` - 48 edges
-2. `db` - 22 edges
-3. `getUserProfile()` - 22 edges
+1. `useAuth()` - 47 edges
+2. `getUserProfile()` - 23 edges
+3. `db` - 22 edges
 4. `getQuestionUrl()` - 16 edges
 5. `compilerOptions` - 15 edges
-6. `What You Must Do When Invoked` - 12 edges
+6. `UserProfile` - 13 edges
 7. `useToast()` - 12 edges
 8. `logActionAndNotify()` - 12 edges
-9. `UserProfile` - 12 edges
+9. `What You Must Do When Invoked` - 12 edges
 10. `מערכת דירוג שתיל-גזע-אלון 🌱🌳🌲` - 11 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `LoginPage()` --calls--> `useAuth()`  [EXTRACTED]
-  src/app/login/page.tsx → src/context/AuthContext.tsx
 - `useLiveAuthorProfile()` --calls--> `getUserProfile()`  [EXTRACTED]
   src/components/ui/LiveAuthorDisplay.tsx → src/services/user-level.service.ts
+- `UserAvatarProps` --references--> `UserProfile`  [EXTRACTED]
+  src/components/ui/UserAvatar.tsx → src/types/user-levels.ts
 - `AdminPage()` --calls--> `useAuth()`  [EXTRACTED]
   src/app/admin/page.tsx → src/context/AuthContext.tsx
-- `AskPage()` --calls--> `useAuth()`  [EXTRACTED]
-  src/app/ask/page.tsx → src/context/AuthContext.tsx
-- `ChatPage()` --calls--> `useAuth()`  [EXTRACTED]
-  src/app/conversations/[id]/page.tsx → src/context/AuthContext.tsx
+- `GET()` --calls--> `getCloudinaryUsage()`  [EXTRACTED]
+  src/app/api/cloudinary/usage/route.ts → src/lib/cloudinary.ts
+- `POST()` --calls--> `adminDb()`  [EXTRACTED]
+  src/app/api/poll/vote/route.ts → src/lib/firebase-admin.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (40 total, 9 thin omitted)
+## Communities (39 total, 9 thin omitted)
 
 ### Community 0 - "useAuth"
-Cohesion: 0.08
-Nodes (37): AdminPage(), Conversation, ConversationsPage(), DebugPage(), ProgressRoute(), SetupProfilePage(), AdminPanel(), ForceFix() (+29 more)
+Cohesion: 0.09
+Nodes (35): AdminPage(), Conversation, ConversationsPage(), DebugPage(), ProgressRoute(), SetupProfilePage(), AdminPanel(), ForceFix() (+27 more)
 
 ### Community 1 - "What You Must Do When Invoked"
 Cohesion: 0.08
@@ -91,12 +90,12 @@ Cohesion: 0.09
 Nodes (42): GroupedNotification, Notification, NotificationsPage(), Home(), Question, Question, QuestionPage(), SearchContent() (+34 more)
 
 ### Community 3 - "OnboardingModal.tsx"
-Cohesion: 0.11
-Nodes (18): DEFAULT_SETTINGS, MONTHS, SettingsPage(), UserSettings, currentYear, DAYS, MONTHS, OnboardingModal() (+10 more)
+Cohesion: 0.10
+Nodes (21): DEFAULT_SETTINGS, MONTHS, SettingsPage(), UserSettings, currentYear, DAYS, MONTHS, OnboardingModal() (+13 more)
 
 ### Community 4 - "QuestionCard.tsx"
-Cohesion: 0.11
-Nodes (31): Answer, QuestionCardProps, getAdminActionsLog(), getUserNotifications(), logActionAndNotify(), logAdminAction(), logBlockUser(), logDeleteAnswer() (+23 more)
+Cohesion: 0.07
+Nodes (49): allPossibleTags, AskPage(), CATEGORIES, semanticClusters, Answer, AnswersModal(), AnswersModalProps, Answer (+41 more)
 
 ### Community 5 - "devDependencies"
 Cohesion: 0.07
@@ -167,31 +166,27 @@ Cohesion: 0.50
 Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphify reference: incremental update and cluster-only
 
 ### Community 38 - "Header.tsx"
-Cohesion: 0.11
-Nodes (18): inter, metadata, viewport, LoginPage(), OnboardingGate(), getSearchHistory(), Header(), removeSearchHistoryItem() (+10 more)
-
-### Community 39 - "ask/page.tsx"
-Cohesion: 0.14
-Nodes (18): allPossibleTags, AskPage(), CATEGORIES, semanticClusters, Answer, AnswersModal(), AnswersModalProps, MentionTextarea (+10 more)
+Cohesion: 0.12
+Nodes (16): inter, metadata, viewport, OnboardingGate(), getSearchHistory(), Header(), removeSearchHistoryItem(), saveSearchHistory() (+8 more)
 
 ## Knowledge Gaps
-- **206 isolated node(s):** `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)`, `Step 1 - Ensure graphify is installed`, `Step 2 - Detect files` (+201 more)
+- **205 isolated node(s):** `firebaseConfig`, `storage`, `nextConfig`, `name`, `version` (+200 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useAuth()` connect `useAuth` to `recommendation.service.ts`, `OnboardingModal.tsx`, `QuestionCard.tsx`, `Header.tsx`, `ask/page.tsx`, `[id]/page.tsx`?**
-  _High betweenness centrality (0.045) - this node is a cross-community bridge._
-- **Why does `db` connect `recommendation.service.ts` to `useAuth`, `OnboardingModal.tsx`, `QuestionCard.tsx`, `Header.tsx`, `ask/page.tsx`, `[id]/page.tsx`?**
+- **Why does `useAuth()` connect `useAuth` to `recommendation.service.ts`, `OnboardingModal.tsx`, `QuestionCard.tsx`, `Header.tsx`, `[id]/page.tsx`?**
+  _High betweenness centrality (0.044) - this node is a cross-community bridge._
+- **Why does `db` connect `recommendation.service.ts` to `useAuth`, `OnboardingModal.tsx`, `QuestionCard.tsx`, `Header.tsx`, `[id]/page.tsx`?**
   _High betweenness centrality (0.023) - this node is a cross-community bridge._
 - **Why does `getUserProfile()` connect `useAuth` to `[id]/page.tsx`, `level-integration-examples.ts`, `OnboardingModal.tsx`, `QuestionCard.tsx`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **What connects `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)` to the rest of the system?**
-  _206 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
+- **What connects `firebaseConfig`, `storage`, `nextConfig` to the rest of the system?**
+  _205 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `useAuth` be split into smaller, more focused modules?**
-  _Cohesion score 0.08090957165520889 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08883693746347165 - nodes in this community are weakly interconnected._
 - **Should `What You Must Do When Invoked` be split into smaller, more focused modules?**
   _Cohesion score 0.08 - nodes in this community are weakly interconnected._
 - **Should `recommendation.service.ts` be split into smaller, more focused modules?**

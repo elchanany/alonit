@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { AppLogo } from '@/components/ui/AppLogo';
 
@@ -16,15 +16,17 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
+    const [popupBlocked, setPopupBlocked] = useState(false);
 
     const handleGoogleSignIn = () => {
         setError('');
+        setPopupBlocked(false);
         setGoogleLoading(true);
         signInWithGoogle(false)
             .catch((err: any) => {
                 console.error("Google popup sign-in error:", err);
                 if (err?.code === 'auth/popup-blocked') {
-                    setError('הדפדפן חסם את חלון ההתחברות. נסו שוב או לחצו על "התחברות במעבר דף" למטה.');
+                    setPopupBlocked(true);
                 } else if (err?.code !== 'auth/cancelled-popup-request' && err?.code !== 'auth/popup-closed-by-user') {
                     setError(err?.message || 'שגיאה בהתחברות עם גוגל');
                 }
@@ -36,6 +38,7 @@ export default function LoginPage() {
 
     const handleGoogleRedirectSignIn = () => {
         setError('');
+        setPopupBlocked(false);
         setGoogleLoading(true);
         signInWithGoogle(true).catch((err: any) => {
             console.error("Google redirect sign-in error:", err);
@@ -109,6 +112,21 @@ export default function LoginPage() {
                             החלון נחסם? לחצו כאן להתחברות במעבר דף מלא (Redirect)
                         </button>
                     </div>
+
+                    {popupBlocked && (
+                        <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 text-right space-y-2 mb-4 animate-in fade-in">
+                            <div className="flex items-center gap-2 text-amber-400 font-bold text-xs sm:text-sm">
+                                <AlertCircle size={17} className="shrink-0" />
+                                <span>הדפדפן חסם את חלון ההתחברות (Pop-up)</span>
+                            </div>
+                            <div className="text-xs text-amber-200/90 leading-relaxed space-y-1">
+                                <p>כדי להתחבר עם גוגל, עשו זאת בקלות:</p>
+                                <p>1. לחצו על סמל המנעול 🔒 או סמל החלון שנחסם 🚫 בשורת הכתובת של הדפדפן (למעלה).</p>
+                                <p>2. סמנו <strong>אפשר חלונות קופצים</strong> (Allow pop-ups).</p>
+                                <p>3. לחצו שוב על כפתור <strong>המשך עם גוגל</strong>.</p>
+                            </div>
+                        </div>
+                    )}
 
                     {error && (
                         <div className="text-red-300 text-xs text-center bg-red-900/40 border border-red-700/60 p-3 rounded-xl mb-4 leading-relaxed">

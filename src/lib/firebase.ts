@@ -4,13 +4,9 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
-const isBrowser = typeof window !== 'undefined';
-const isCustomDomain = isBrowser && (window.location.hostname.endsWith('vercel.app') || window.location.hostname.includes('alonit'));
-const authDomain = isCustomDomain ? window.location.host : "alonit-d5cf9.firebaseapp.com";
-
 const firebaseConfig = {
     apiKey: "AIzaSyDUn8SyXrMoCZQAyMbJ8rA62bycdGOfjGk",
-    authDomain: authDomain,
+    authDomain: "alonit-d5cf9.firebaseapp.com",
     projectId: "alonit-d5cf9",
     storageBucket: "alonit-d5cf9.firebasestorage.app",
     messagingSenderId: "819573739570",

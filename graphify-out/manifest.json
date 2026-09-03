@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "src/app/login/page.tsx": {
-    "mtime": 1788456853.1825185,
-    "ast_hash": "e9d7c6fc7748d11144618a7848431e90",
+    "mtime": 1788460257.43205,
+    "ast_hash": "454e9932dd7036b64c76e1a532d7fd09",
     "semantic_hash": ""
   },
   "src/app/moderation/page.tsx": {
@@ -300,8 +300,8 @@
     "semantic_hash": "b5af76263ad07ad592515a0da2bb5afe"
   },
   "src/lib/firebase.ts": {
-    "mtime": 1788456832.8685808,
-    "ast_hash": "0727f3f44665f7e74685c429700e9087",
+    "mtime": 1788460212.2568128,
+    "ast_hash": "70190f8ced10bd8c9bb08bf520af07f1",
     "semantic_hash": ""
   },
   "src/lib/semantic-clusters.json": {
