@@ -10,7 +10,7 @@ import { findRelatedQuestions, getRelatedTiles, Question as RecommendationQuesti
 import { useAuth } from '@/context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { he } from 'date-fns/locale';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, HelpCircle } from 'lucide-react';
 import { getQuestionUrl } from '@/utils/url';
 
 interface Question {
@@ -209,7 +209,7 @@ export default function QuestionPage() {
     if (questions.length === 0 && !loading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white">
-                  <div className="text-4xl mb-4">🌙</div>
+                  <HelpCircle size={40} className="text-indigo-400/60 mb-3" />
                   <h2 className="text-xl font-bold mb-4">השאלה לא נמצאה</h2>
                   <button onClick={() => router.push('/')} className="px-6 py-2 bg-indigo-600 rounded-full font-bold">
                       חזור לדף הבית
@@ -218,22 +218,8 @@ export default function QuestionPage() {
         );
     }
 
-    const feedHeight = 'calc(100vh - 7.5rem)';
-
     return (
-        <main
-            className="absolute left-0 right-0 bg-black z-0"
-            style={{
-                top: '3.5rem',
-                bottom: '4rem',
-            }}
-        >
-            <style jsx>{`
-                @media (min-width: 768px) {
-                    main { top: 4rem !important; bottom: 0 !important; }
-                }
-            `}</style>
-
+        <main className="fixed inset-x-0 top-14 bottom-16 md:top-16 md:bottom-0 bg-gradient-to-b from-[#0a0414] via-[#07030e] to-[#040208] z-0 overflow-hidden">
             {/* Back Button Overlay */}
             <div className="absolute top-4 right-4 z-50">
                <button onClick={() => router.push('/')} className="bg-black/50 hover:bg-black/70 backdrop-blur-md p-2 rounded-full text-white transition">
@@ -255,26 +241,23 @@ export default function QuestionPage() {
                 <div
                     ref={scrollContainerRef}
                     onScroll={handleScroll}
-                    className="w-full max-w-lg no-scrollbar relative shrink-0"
+                    className="w-full max-w-[500px] h-full flex flex-col no-scrollbar relative shrink-0 mx-auto overflow-y-auto"
                     style={{
-                        overflowY: 'auto',
-                        height: '100%',
-                        WebkitOverflowScrolling: 'touch',
                         scrollSnapType: 'y mandatory',
+                        WebkitOverflowScrolling: 'touch',
                     }}
                 >
                     {questions.map((question, index) => (
                         <div
                             key={question.id + index}
-                            className="w-full flex items-center justify-center py-2"
+                            className="w-full h-full shrink-0 flex-none snap-start snap-always p-2 md:py-3.5 md:px-0 box-border relative flex flex-col"
                             style={{
-                                height: feedHeight,
                                 scrollSnapAlign: 'start',
                                 scrollSnapStop: 'always',
                             }}
                         >
                             {/* Question Card with rounded edges like TikTok */}
-                            <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl">
+                            <div className="w-full h-full rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-slate-900">
                                 <QuestionCard
                                     id={question.id}
                                     title={question.title}

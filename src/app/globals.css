@@ -7,10 +7,10 @@
 :root {
   /* Default to Dark Mode colors */
   --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 10, 10, 10;
-  /* Very dark gray/black */
-  --background-end-rgb: 20, 10, 30;
-  /* Dark purple tint */
+  --background-start-rgb: 10, 4, 20;
+  /* Extremely dark purple / almost black */
+  --background-end-rgb: 4, 2, 8;
+  /* Black with purple tint */
 }
 
 body {
@@ -27,7 +27,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f0f0f;
+  background: #08051a;
 }
 
 ::-webkit-scrollbar-thumb {

@@ -6,6 +6,8 @@ import {
     User,
     GoogleAuthProvider,
     signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     signOut as firebaseSignOut,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -24,7 +26,7 @@ interface AuthContextType {
     loading: boolean;
     isVerified: boolean;
     needsOnboarding: boolean;
-    signInWithGoogle: () => Promise<void>;
+    signInWithGoogle: (preferRedirect?: boolean) => Promise<void>;
     signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
     signUpWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
     resendVerification: () => Promise<void>;
@@ -38,7 +40,7 @@ const AuthContext = createContext<AuthContextType>({
     loading: true,
     isVerified: false,
     needsOnboarding: false,
-    signInWithGoogle: async () => { },
+    signInWithGoogle: async (preferRedirect?: boolean) => { },
     signInWithEmail: async () => ({}),
     signUpWithEmail: async () => ({}),
     resendVerification: async () => { },
@@ -55,6 +57,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isVerified = user?.emailVerified || false;
 
     useEffect(() => {
+        // Handle redirect result if user returned from in-window Google login
+        getRedirectResult(auth)
+            .then(async (result) => {
+                if (result && result.user) {
+                    console.log("Redirect login successful:", result.user.email);
+                    router.push('/');
+                }
+            })
+            .catch((error) => {
+                console.error("Redirect sign-in error:", error);
+            });
+
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             setUser(user);
             if (user) {
@@ -121,8 +135,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => unsubscribe();
     }, []);
 
-    const signInWithGoogle = async () => {
+    const signInWithGoogle = async (preferRedirect = true) => {
         const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+
+        // Prefer in-window redirect to avoid popup blockers entirely (the window stays inside!)
+        if (preferRedirect) {
+            try {
+                console.log("Starting in-window Google sign-in redirect...");
+                await signInWithRedirect(auth, provider);
+                return;
+            } catch (redirectError: any) {
+                console.error("Redirect error, falling back to popup:", redirectError);
+            }
+        }
+
         try {
             const result = await signInWithPopup(auth, provider);
             console.log("Google Sign In Success:", result.user.email);
@@ -169,8 +196,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 error.code === 'auth/popup-closed-by-user') {
                 return; // User cancelled - no need for error message
             }
-            if (error.code === 'auth/popup-blocked') {
-                alert("החלון נחסם. אנא אפשר חלונות קופצים עבור אתר זה ונסה שוב.");
+            if (error.code === 'auth/popup-blocked' || error.code === 'auth/operation-not-supported-in-this-environment') {
+                console.log("Popup blocked. Redirecting inside the same window...");
+                try {
+                    await signInWithRedirect(auth, provider);
+                    return;
+                } catch (redirectError: any) {
+                    console.error("Redirect fallback error:", redirectError);
+                    alert("שגיאה בהתחברות עם גוגל. אנא נסה שוב.");
+                }
                 return;
             }
             alert("שגיאה בהתחברות עם גוגל. נסה שוב.");

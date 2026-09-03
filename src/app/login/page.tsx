@@ -15,6 +15,18 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [googleLoading, setGoogleLoading] = useState(false);
+
+    const handleGoogleSignIn = async () => {
+        setGoogleLoading(true);
+        setError('');
+        try {
+            await signInWithGoogle(true);
+        } catch (err: any) {
+            setError('שגיאה בהתחברות עם גוגל');
+            setGoogleLoading(false);
+        }
+    };
 
     // If already logged in, redirect
     if (user) {
@@ -62,11 +74,12 @@ export default function LoginPage() {
 
                     {/* Google Button */}
                     <button
-                        onClick={signInWithGoogle}
-                        className="w-full flex items-center justify-center gap-3 bg-white/10 border border-gray-700 px-4 py-3 rounded-xl shadow-sm hover:bg-white/20 transition-all font-medium text-white mb-6"
+                        onClick={handleGoogleSignIn}
+                        disabled={googleLoading || loading}
+                        className="w-full flex items-center justify-center gap-3 bg-white/10 border border-gray-700 px-4 py-3 rounded-xl shadow-sm hover:bg-white/20 transition-all font-medium text-white mb-6 disabled:opacity-50 active:scale-98 cursor-pointer"
                     >
                         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                        המשך עם גוגל
+                        <span>{googleLoading ? 'מעביר להתחברות עם גוגל...' : 'המשך עם גוגל'}</span>
                     </button>
 
                     {/* Divider */}

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, Bell, Settings, LogIn, MessageCircle, Shield, TrendingUp, Clock, Flame, User2, X } from 'lucide-react';
+import { Search, Bell, Settings, LogIn, MessageCircle, Shield, TrendingUp, Clock, Flame, User2, X, PlusCircle, HelpCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, getDoc, getDocs, orderBy, limit, setDoc, increment as firestoreIncrement } from 'firebase/firestore';
@@ -12,6 +12,7 @@ import { UserAvatar } from '@/components/ui/UserAvatar';
 import { trackEvent } from '@/services/recommendation.service';
 import { getQuestionUrl } from '@/utils/url';
 import { getGenderedTexts } from '@/utils/gender';
+import { triggerWelcomeTour } from '@/components/ui/WelcomeTourModal';
 
 const SEARCH_HISTORY_KEY = 'alonit_search_history';
 const MAX_HISTORY = 8;
@@ -305,9 +306,23 @@ export function Header() {
                 </div>
 
                 {/* Desktop Nav */}
-                <nav className="hidden md:flex items-center gap-2">
-                    <Link href="/ask" className="text-sm font-medium text-gray-300 hover:text-white transition-colors px-3 py-2 rounded-full hover:bg-white/10 active:scale-95">
-                        {texts.ask} שאלה
+                <nav className="hidden md:flex items-center gap-2.5">
+                    {/* Tour Button */}
+                    <button
+                        onClick={triggerWelcomeTour}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-indigo-200 hover:text-white bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-3 py-1.5 rounded-full transition-all active:scale-95"
+                        title="סיור מודרך באתר"
+                    >
+                        <HelpCircle size={14} className="text-indigo-400" />
+                        <span>איך זה עובד?</span>
+                    </button>
+
+                    <Link
+                        href="/ask"
+                        className="flex items-center gap-1.5 text-xs lg:text-sm font-bold bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 text-white px-3.5 py-1.5 rounded-full shadow-md shadow-indigo-500/20 active:scale-95 transition-all"
+                    >
+                        <PlusCircle size={16} />
+                        <span>{texts.ask} שאלה</span>
                     </Link>
 
                     {authLoading ? (
@@ -361,6 +376,13 @@ export function Header() {
 
                 {/* Mobile Icons */}
                 <div className="flex md:hidden items-center gap-2">
+                    <button
+                        onClick={triggerWelcomeTour}
+                        className="p-2 text-indigo-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95"
+                        title="איך זה עובד?"
+                    >
+                        <HelpCircle size={20} />
+                    </button>
                     {authLoading ? (
                         <div className="w-8 h-8 bg-gray-700/50 rounded-full animate-pulse" />
                     ) : user ? (

@@ -5,6 +5,7 @@ import { getQuestionUrl } from '@/utils/url';
 import { collection, query, orderBy, limit, onSnapshot, startAfter, getDocs, DocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { QuestionCard } from '@/components/features/QuestionCard';
+import { ChevronDown, Inbox } from 'lucide-react';
 import { RelatedQuestionsTiles } from '@/components/features/RelatedQuestionsTiles';
 import { findRelatedQuestions, getRelatedTiles, Question as RecommendationQuestion, rankFeedForUser, trackInteraction } from '@/services/recommendation.service';
 import { useAuth } from '@/context/AuthContext';
@@ -50,6 +51,7 @@ export default function Home() {
     const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [hasScrolled, setHasScrolled] = useState(false);
     const INITIAL_LOAD = 30; // Increased pool for personalized ranking
     const LOAD_MORE_COUNT = 30;
 
@@ -141,11 +143,16 @@ export default function Home() {
             createdAt: q.createdAt
         }));
 
-        findRelatedQuestions(recQuestion, allRecQuestions, 6).then(related => {
-            const { left, right } = getRelatedTiles(related);
-            setLeftTiles(left);
-            setRightTiles(right);
-        });
+        // Defer CPU-intensive semantic processing so it doesn't freeze the scrolling animation
+        const timerId = setTimeout(() => {
+            findRelatedQuestions(recQuestion, allRecQuestions, 6).then(related => {
+                const { left, right } = getRelatedTiles(related);
+                setLeftTiles(left);
+                setRightTiles(right);
+            });
+        }, 300);
+
+        return () => clearTimeout(timerId);
     }, [currentIndex, questions]);
 
     // Track Watch Time and Sync URL
@@ -173,6 +180,11 @@ export default function Home() {
         const scrollTop = container.scrollTop;
         const itemHeight = container.clientHeight;
         const newIndex = Math.round(scrollTop / itemHeight);
+        
+        if (scrollTop > 20) {
+            setHasScrolled(true);
+        }
+
         if (newIndex !== currentIndex && newIndex >= 0 && newIndex < questions.length) {
             setCurrentIndex(newIndex);
         }
@@ -197,7 +209,7 @@ export default function Home() {
 
     if (loading) {
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black text-white">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0612] text-white">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                     <p className="animate-pulse">טוען את הפיד...</p>
@@ -206,27 +218,8 @@ export default function Home() {
         );
     }
 
-    // iOS Safari-safe container height calculation
-    // Safari has bugs with `fixed` + `100dvh` + `snap-mandatory` causing 0-height containers
-    // We use CSS custom properties set via JS as the ultimate fallback
-    const feedHeight = 'calc(100vh - 7.5rem)';
-    const feedHeightMd = 'calc(100vh - 4rem)';
-
     return (
-        <main
-            className="absolute left-0 right-0 bg-black z-0"
-            style={{
-                top: '3.5rem',   // h-14 = 3.5rem (header mobile)
-                bottom: '4rem',  // h-16 = 4rem (mobile nav)
-            }}
-        >
-            {/* Desktop: override bottom to 0 (no mobile nav) */}
-            <style jsx>{`
-                @media (min-width: 768px) {
-                    main { top: 4rem !important; bottom: 0 !important; }
-                }
-            `}</style>
-
+        <main className="fixed inset-x-0 top-14 bottom-16 md:top-16 md:bottom-0 bg-gradient-to-b from-[#0a0414] via-[#07030e] to-[#040208] z-0 overflow-hidden">
             <div className="h-full w-full flex justify-center items-stretch">
                 {/* Left Sidebar - Related Questions (Desktop only) */}
                 <div className="hidden lg:flex flex-1 justify-start min-w-0 pl-4">
@@ -241,33 +234,30 @@ export default function Home() {
                 <div
                     ref={scrollContainerRef}
                     onScroll={handleScroll}
-                    className="w-full max-w-lg no-scrollbar relative shrink-0"
+                    className="w-full max-w-[500px] h-full flex flex-col no-scrollbar relative shrink-0 mx-auto overflow-y-auto"
                     style={{
-                        overflowY: 'auto',
-                        height: '100%',
-                        WebkitOverflowScrolling: 'touch',
                         scrollSnapType: 'y mandatory',
+                        WebkitOverflowScrolling: 'touch',
                     }}
                 >
                     {questions.length === 0 ? (
                         <div className="h-full w-full flex flex-col items-center justify-center text-indigo-300 p-6 text-center">
-                            <div className="text-6xl mb-4">🌙</div>
-                            <h2 className="text-2xl font-bold mb-2">אין שאלות עדיין</h2>
-                            <p className="text-indigo-400">הלילה יפה... {texts.beFirst} להאיר בשאלה!</p>
+                            <Inbox size={44} className="text-indigo-400/60 mb-3" />
+                            <h2 className="text-xl font-bold mb-2 text-white">אין שאלות עדיין</h2>
+                            <p className="text-sm text-indigo-300/80">{texts.beFirst} לשאול שאלה ראשונה בקהילה.</p>
                         </div>
                     ) : (
                         questions.map((question, index) => (
                             <div
                                 key={question.id}
-                                className="w-full flex items-center justify-center py-2"
+                                className="w-full h-full shrink-0 flex-none snap-start snap-always p-2 md:py-3.5 md:px-0 box-border relative flex flex-col"
                                 style={{
-                                    height: feedHeight,
                                     scrollSnapAlign: 'start',
                                     scrollSnapStop: 'always',
                                 }}
                             >
-                                {/* Question Card with rounded edges like TikTok */}
-                                <div className="w-full h-full rounded-2xl overflow-hidden">
+                                {/* Question Card - TikTok aspect on desktop (rounded), also rounded on mobile */}
+                                <div className="w-full h-full rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-slate-900">
                                     <QuestionCard
                                         id={question.id}
                                         type={question.type as 'question' | 'poll'}
@@ -290,6 +280,16 @@ export default function Home() {
                                         tags={question.tags}
                                     />
                                 </div>
+
+                                {/* First card scroll guidance hint */}
+                                {index === 0 && !hasScrolled && (
+                                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 pointer-events-none z-20 flex flex-col items-center gap-1 animate-bounce">
+                                        <span className="text-[11px] font-semibold text-white/95 bg-slate-950/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-indigo-500/30 shadow-xl flex items-center gap-1.5">
+                                            <span>גללו לשאלה הבאה</span>
+                                            <ChevronDown size={14} className="text-indigo-400" />
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         ))
                     )}

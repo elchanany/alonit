@@ -32,13 +32,18 @@ export function RelatedQuestionsTiles({ questions, side, onQuestionClick }: Rela
     return (
         <div
             className={`
-                flex flex-col h-full w-full py-16 px-8 overflow-y-auto no-scrollbar
-                ${side === 'left' ? 'items-start' : 'items-end'} // Push away from center
+                flex flex-col h-full w-full py-10 px-6 overflow-y-auto no-scrollbar
+                ${side === 'left' ? 'items-start' : 'items-end'}
             `}
         >
+            {/* Sidebar Context Header */}
+            <div className={`mb-4 flex items-center gap-1.5 text-xs font-bold text-indigo-300/80 px-2 tracking-wide select-none ${side === 'left' ? 'justify-start' : 'justify-end'}`}>
+                <span>נושאים קשורים</span>
+            </div>
+
             <div className={`
-                flex flex-col gap-6 w-full 
-                ${side === 'left' ? 'items-start' : 'items-end'} // Align items to outer edges
+                flex flex-col gap-5 w-full 
+                ${side === 'left' ? 'items-start' : 'items-end'}
             `}>
                 {questions.map((question, index) => {
                     // Pseduo-random mix to ensure variety without strict ordering

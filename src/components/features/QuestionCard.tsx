@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, ArrowUp, Edit2, MoreVertical, X, ShieldAlert, ChevronDown } from 'lucide-react';
+import { MessageCircle, Heart, Share2, Flag, Reply, Trash2, ThumbsDown, ArrowUp, Edit2, MoreVertical, X, ShieldAlert, ChevronDown, Lock } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, updateDoc, increment, collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -56,8 +56,9 @@ interface Answer {
     replyTo?: { answerId?: string; authorName: string; content: string };
     createdAt: any;
 }
+import { memo } from 'react';
 
-export function QuestionCard({
+export const QuestionCard = memo(function QuestionCard({
     id,
     title,
     content,
@@ -587,9 +588,9 @@ export function QuestionCard({
 
     const getRankBadge = (rank?: string) => {
         switch (rank) {
-            case 'ALON': return <span className="text-xs bg-amber-700 text-white px-2 py-0.5 rounded-full">🌳 אלון</span>;
-            case 'GEZA': return <span className="text-xs bg-amber-600/80 text-white px-2 py-0.5 rounded-full">🪵 גזע</span>;
-            default: return <span className="text-xs bg-green-500/80 text-white px-2 py-0.5 rounded-full">🌱 שתיל</span>;
+            case 'ALON': return <span className="text-[11px] font-bold bg-amber-600/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full cursor-help transition-all hover:bg-amber-600/30" title="דרגת אלון: נאמן קהילה מוביל">אלון</span>;
+            case 'GEZA': return <span className="text-[11px] font-bold bg-amber-500/20 text-amber-200 border border-amber-400/30 px-2.5 py-0.5 rounded-full cursor-help transition-all hover:bg-amber-500/30" title="דרגת גזע: חבר קהילה פעיל ומשפיע">גזע</span>;
+            default: return <span className="text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-0.5 rounded-full cursor-help transition-all hover:bg-emerald-500/30" title="דרגת שתיל: חבר קהילה צומח">שתיל</span>;
         }
     };
 
@@ -761,7 +762,7 @@ export function QuestionCard({
                 status: 'PENDING',
                 createdAt: serverTimestamp()
             });
-            showToast('הדיווח נשלח לאלונים 🌳', 'success');
+            showToast('הדיווח נשלח לצוות הניהול', 'success');
         } catch (error) {
             showToast('שגיאה בדיווח', 'error');
         }
@@ -897,7 +898,10 @@ export function QuestionCard({
                 {/* Like Login Prompt */}
                 {showLikePrompt && !user && (
                     <div className="mb-4 flex items-center justify-between bg-pink-600/20 border border-pink-500/30 rounded-xl px-4 py-3">
-                        <span className="text-sm text-pink-300">💖 {g(currentUserProfile?.gender, 'login')} כדי לתת לייק</span>
+                        <span className="text-sm text-pink-300 flex items-center gap-1.5">
+                            <Heart size={14} fill="currentColor" />
+                            <span>{g(currentUserProfile?.gender, 'login')} כדי לתת לייק</span>
+                        </span>
                         <Link href="/login" className="text-sm font-bold text-pink-400 hover:text-pink-300">
                             {g(currentUserProfile?.gender, 'login')}
                         </Link>
@@ -1021,40 +1025,44 @@ export function QuestionCard({
                 </div>
 
                 {/* Engagement Bar — always directly below title/content/tags */}
-                <div className="flex items-center gap-4 py-4 border-t border-b border-gray-800 mt-4">
+                <div className="flex items-center gap-4 sm:gap-6 py-3 border-t border-b border-gray-800/80 mt-3 text-gray-400">
                     <button
                         onClick={handleFlower}
-                        className={'flex items-center gap-2 transition-colors ' + (liked ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500')}
+                        title="הפרח פרח (לייק) 🌸"
+                        className={'flex items-center gap-1.5 transition-all active:scale-90 ' + (liked ? 'text-pink-500' : 'hover:text-pink-400')}
                     >
-                        <Heart size={22} fill={liked ? "currentColor" : "none"} strokeWidth={liked ? 0 : 2} />
-                        <span className="font-medium text-sm">{localFlowerCount}</span>
+                        <Heart size={21} fill={liked ? "currentColor" : "none"} strokeWidth={liked ? 0 : 2} />
+                        <span className="font-semibold text-xs sm:text-sm">{localFlowerCount}</span>
                     </button>
 
                     <button
                         onClick={handleDislike}
-                        className={'flex items-center gap-2 transition-colors ' + (disliked ? 'text-red-500' : 'text-gray-500 hover:text-red-500')}
+                        title="לא אהבתי"
+                        className={'flex items-center gap-1.5 transition-all active:scale-90 ' + (disliked ? 'text-red-500' : 'hover:text-red-400')}
                     >
-                        <ThumbsDown size={20} fill={disliked ? "currentColor" : "none"} />
-                        {localDislikeCount > 0 && <span className="font-medium text-sm">{localDislikeCount}</span>}
+                        <ThumbsDown size={19} fill={disliked ? "currentColor" : "none"} />
+                        {localDislikeCount > 0 && <span className="font-semibold text-xs sm:text-sm">{localDislikeCount}</span>}
                     </button>
 
                     <button
                         onClick={() => setShowAnswerForm(true)}
-                        className="flex items-center gap-2 text-gray-500 hover:text-indigo-400 transition-colors"
+                        title="השב לשאלה או קרא תשובות"
+                        className="flex items-center gap-1.5 hover:text-indigo-400 transition-all active:scale-90"
                     >
-                        <MessageCircle size={22} />
-                        <span className="font-medium text-sm">{answerCount}</span>
+                        <MessageCircle size={21} />
+                        <span className="font-semibold text-xs sm:text-sm">{answerCount}</span>
                     </button>
 
                     <button
                         onClick={handleShare}
-                        className="flex items-center gap-2 text-gray-500 hover:text-indigo-400 transition-colors"
+                        title="שתף שאלה"
+                        className="flex items-center gap-1.5 hover:text-indigo-400 transition-all active:scale-90"
                     >
-                        <Share2 size={22} />
+                        <Share2 size={21} />
                     </button>
 
-                    <div className="mr-auto">
-                        <Flag size={18} className="text-gray-600 hover:text-red-400 cursor-pointer" />
+                    <div className="mr-auto" title="דווח על תוכן לא הולם">
+                        <Flag size={18} className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer active:scale-90" />
                     </div>
                 </div>
 
@@ -1259,7 +1267,8 @@ export function QuestionCard({
                                 href="/login"
                                 className="mb-4 flex items-center justify-center gap-2 bg-indigo-600/20 border border-indigo-500/30 rounded-xl px-4 py-3 text-sm text-indigo-300 hover:bg-indigo-600/30 transition-colors"
                             >
-                                🔐 {g(currentUserProfile?.gender, 'login')} כדי להשאיר תשובה
+                                <Lock size={15} />
+                                <span>{g(currentUserProfile?.gender, 'login')} כדי להשאיר תשובה</span>
                             </Link>
                         )
                     )}
@@ -1385,9 +1394,11 @@ export function QuestionCard({
                                     >
                                         <Heart size={14} fill={likedAnswers.has(ans.id) ? "currentColor" : "none"} />
                                         <span>{ans.flowerCount}</span>
-                                        {/* Flower indicator if question author liked */}
+                                        {/* Author like indicator */}
                                         {likedAnswers.has(ans.id) && user?.uid === authorId && (
-                                            <span className="text-yellow-400">🌸</span>
+                                            <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded border border-amber-500/30" title="מחבר השאלה סימן אהבתי">
+                                                נבחר
+                                            </span>
                                         )}
                                     </button>
                                     <button
@@ -1552,9 +1563,9 @@ export function QuestionCard({
                     />
                 )}
             </div>
-        </div >
+        </div>
     );
-}
+});
 
 function AdminActionModal({ title, description, confirmLabel = 'אישור', variant = 'danger', onConfirm, onClose }: {
     title: string;
