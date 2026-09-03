@@ -17,15 +17,31 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
 
-    const handleGoogleSignIn = async () => {
-        setGoogleLoading(true);
+    const handleGoogleSignIn = () => {
         setError('');
-        try {
-            await signInWithGoogle(true);
-        } catch (err: any) {
-            setError('שגיאה בהתחברות עם גוגל');
+        setGoogleLoading(true);
+        signInWithGoogle(false)
+            .catch((err: any) => {
+                console.error("Google popup sign-in error:", err);
+                if (err?.code === 'auth/popup-blocked') {
+                    setError('הדפדפן חסם את חלון ההתחברות. נסו שוב או לחצו על "התחברות במעבר דף" למטה.');
+                } else if (err?.code !== 'auth/cancelled-popup-request' && err?.code !== 'auth/popup-closed-by-user') {
+                    setError(err?.message || 'שגיאה בהתחברות עם גוגל');
+                }
+            })
+            .finally(() => {
+                setGoogleLoading(false);
+            });
+    };
+
+    const handleGoogleRedirectSignIn = () => {
+        setError('');
+        setGoogleLoading(true);
+        signInWithGoogle(true).catch((err: any) => {
+            console.error("Google redirect sign-in error:", err);
+            setError(err?.message || 'שגיאה בהתחברות עם גוגל');
             setGoogleLoading(false);
-        }
+        });
     };
 
     // If already logged in, redirect
@@ -73,14 +89,26 @@ export default function LoginPage() {
                     </div>
 
                     {/* Google Button */}
-                    <button
-                        onClick={handleGoogleSignIn}
-                        disabled={googleLoading || loading}
-                        className="w-full flex items-center justify-center gap-3 bg-white/10 border border-gray-700 px-4 py-3 rounded-xl shadow-sm hover:bg-white/20 transition-all font-medium text-white mb-6 disabled:opacity-50 active:scale-98 cursor-pointer"
-                    >
-                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                        <span>{googleLoading ? 'מעביר להתחברות עם גוגל...' : 'המשך עם גוגל'}</span>
-                    </button>
+                    <div className="space-y-2 mb-6">
+                        <button
+                            type="button"
+                            onClick={handleGoogleSignIn}
+                            disabled={googleLoading || loading}
+                            className="w-full flex items-center justify-center gap-3 bg-white/10 hover:bg-white/20 border border-gray-700 px-4 py-3 rounded-xl shadow-sm transition-all font-semibold text-white disabled:opacity-50 active:scale-98 cursor-pointer"
+                        >
+                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                            <span>{googleLoading ? 'מתחבר עם גוגל...' : 'המשך עם גוגל (התחברות מהירה)'}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleGoogleRedirectSignIn}
+                            disabled={googleLoading || loading}
+                            className="w-full text-center text-xs text-indigo-400 hover:text-indigo-300 transition-colors py-1 cursor-pointer"
+                        >
+                            החלון נחסם? לחצו כאן להתחברות במעבר דף מלא (Redirect)
+                        </button>
+                    </div>
 
                     {/* Divider */}
                     <div className="flex items-center gap-4 my-6">

@@ -11,3 +11,5 @@ dist/
 
 prisma/
 prisma/dev.db
+
+.vercel

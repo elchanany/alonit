@@ -139,19 +139,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => unsubscribe();
     }, []);
 
-    const signInWithGoogle = async (preferRedirect = true) => {
+    const signInWithGoogle = async (forceRedirect = false) => {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
 
-        // Prefer in-window redirect to avoid popup blockers entirely (the window stays inside!)
-        if (preferRedirect) {
-            try {
-                console.log("Starting in-window Google sign-in redirect...");
-                await signInWithRedirect(auth, provider);
-                return;
-            } catch (redirectError: any) {
-                console.error("Redirect error, falling back to popup:", redirectError);
-            }
+        if (forceRedirect) {
+            console.log("Starting in-window Google sign-in redirect...");
+            await signInWithRedirect(auth, provider);
+            return;
         }
 
         try {
@@ -160,59 +155,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(result.user);
 
             // Create user profile if it doesn't exist
-            const existingProfile = await getUserProfile(result.user.uid);
-            if (!existingProfile) {
-                await createUserProfile(
-                    result.user.uid,
-                    result.user.email || '',
-                    result.user.displayName || 'משתמש',
-                    result.user.photoURL || undefined
-                );
-                // Fetch the new profile
-                const newProfile = await getUserProfile(result.user.uid);
-                setUserProfile(newProfile);
-            } else {
-                // If profile exists but missing info, update it
-                const SUPER_ADMIN_EMAIL = 'eyc139@gmail.com';
-                const isSuperAdminEmail = result.user.email === SUPER_ADMIN_EMAIL;
-                const needsRoleUpdate = isSuperAdminEmail && existingProfile.role !== UserRole.SUPER_ADMIN;
-
-                if (!existingProfile.email || !existingProfile.displayName || !existingProfile.photoURL || needsRoleUpdate) {
-                    const needsUpdate = {
-                        email: existingProfile.email || result.user.email || '',
-                        displayName: existingProfile.displayName || result.user.displayName || 'משתמש',
-                        photoURL: existingProfile.photoURL || result.user.photoURL || undefined
-                    };
-                    await fixUserProfile(result.user.uid, needsUpdate.email, needsUpdate.displayName);
-                    // Refetch
-                    const updatedProfile = await getUserProfile(result.user.uid);
-                    setUserProfile(updatedProfile);
-                    if (needsRoleUpdate) alert('הרשאות מנהל שוחזרו בהצלחה!');
+            try {
+                const existingProfile = await getUserProfile(result.user.uid);
+                if (!existingProfile) {
+                    await createUserProfile(
+                        result.user.uid,
+                        result.user.email || '',
+                        result.user.displayName || 'משתמש',
+                        result.user.photoURL || undefined
+                    );
+                    const newProfile = await getUserProfile(result.user.uid);
+                    setUserProfile(newProfile);
                 } else {
                     setUserProfile(existingProfile);
                 }
+            } catch (profileErr) {
+                console.error("Profile load/create error (non-fatal):", profileErr);
             }
 
             router.push('/');
         } catch (error: any) {
             console.error("Error signing in with Google:", error.code, error.message);
-            // Don't show error for cancelled popups
             if (error.code === 'auth/cancelled-popup-request' ||
                 error.code === 'auth/popup-closed-by-user') {
-                return; // User cancelled - no need for error message
+                return; // User cancelled
             }
-            if (error.code === 'auth/popup-blocked' || error.code === 'auth/operation-not-supported-in-this-environment') {
-                console.log("Popup blocked. Redirecting inside the same window...");
-                try {
-                    await signInWithRedirect(auth, provider);
-                    return;
-                } catch (redirectError: any) {
-                    console.error("Redirect fallback error:", redirectError);
-                    alert("שגיאה בהתחברות עם גוגל. אנא נסה שוב.");
-                }
+            if (error.code === 'auth/popup-blocked') {
+                console.log("Popup blocked. Attempting redirect fallback...");
+                await signInWithRedirect(auth, provider);
                 return;
             }
-            alert("שגיאה בהתחברות עם גוגל. נסה שוב.");
+            throw error;
         }
     };
 

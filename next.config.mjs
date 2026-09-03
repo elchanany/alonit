@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    async rewrites() {
+        return [
+            {
+                source: '/__/auth/:path*',
+                destination: 'https://alonit-d5cf9.firebaseapp.com/__/auth/:path*',
+            },
+        ];
+    },
     images: {
         remotePatterns: [
             {
