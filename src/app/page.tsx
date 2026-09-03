@@ -257,7 +257,7 @@ export default function Home() {
                                 }}
                             >
                                 {/* Question Card - TikTok aspect on desktop (rounded), also rounded on mobile */}
-                                <div className="w-full h-full rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-slate-900">
+                                <div data-tour={index === 0 ? "feed-card" : undefined} className="w-full h-full rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-slate-900">
                                     <QuestionCard
                                         id={question.id}
                                         type={question.type as 'question' | 'poll'}

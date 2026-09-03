@@ -309,8 +309,9 @@ export function Header() {
                 <nav className="hidden md:flex items-center gap-2.5">
                     {/* Tour Button */}
                     <button
+                        data-tour="tour-button"
                         onClick={triggerWelcomeTour}
-                        className="flex items-center gap-1.5 text-xs font-semibold text-indigo-200 hover:text-white bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-3 py-1.5 rounded-full transition-all active:scale-95"
+                        className="flex items-center gap-1.5 text-xs font-semibold text-indigo-200 hover:text-white bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-3 py-1.5 rounded-full transition-all active:scale-95 cursor-pointer"
                         title="סיור מודרך באתר"
                     >
                         <HelpCircle size={14} className="text-indigo-400" />
@@ -318,6 +319,7 @@ export function Header() {
                     </button>
 
                     <Link
+                        data-tour="ask-button"
                         href="/ask"
                         className="flex items-center gap-1.5 text-xs lg:text-sm font-bold bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 text-white px-3.5 py-1.5 rounded-full shadow-md shadow-indigo-500/20 active:scale-95 transition-all"
                     >

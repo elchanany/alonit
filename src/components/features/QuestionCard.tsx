@@ -920,7 +920,7 @@ export const QuestionCard = memo(function QuestionCard({
                             />
                         </Link>
                         <div>
-                            <div className="flex items-center gap-2">
+                            <div data-tour="author-rank" className="flex items-center gap-2">
                                 <Link href={displayAuthorName === 'אנונימי' ? '#' : '/user/' + encodeURIComponent(displayAuthorName)} className="font-bold text-sm text-white hover:text-indigo-400 transition-colors">
                                     {displayAuthorName}
                                 </Link>
@@ -1025,10 +1025,11 @@ export const QuestionCard = memo(function QuestionCard({
                 </div>
 
                 {/* Engagement Bar — always directly below title/content/tags */}
-                <div className="flex items-center gap-4 sm:gap-6 py-3 border-t border-b border-gray-800/80 mt-3 text-gray-400">
+                <div data-tour="engagement-bar" className="flex items-center gap-4 sm:gap-6 py-3 border-t border-b border-gray-800/80 mt-3 text-gray-400">
                     <button
+                        data-tour="like-button"
                         onClick={handleFlower}
-                        title="הפרח פרח (לייק) 🌸"
+                        title="אהבתי (לייק)"
                         className={'flex items-center gap-1.5 transition-all active:scale-90 ' + (liked ? 'text-pink-500' : 'hover:text-pink-400')}
                     >
                         <Heart size={21} fill={liked ? "currentColor" : "none"} strokeWidth={liked ? 0 : 2} />
@@ -1045,6 +1046,7 @@ export const QuestionCard = memo(function QuestionCard({
                     </button>
 
                     <button
+                        data-tour="answer-button"
                         onClick={() => setShowAnswerForm(true)}
                         title="השב לשאלה או קרא תשובות"
                         className="flex items-center gap-1.5 hover:text-indigo-400 transition-all active:scale-90"

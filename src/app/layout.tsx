@@ -6,7 +6,7 @@ import { Header } from "@/components/layout/Header";
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { OnboardingGate } from "@/components/auth/OnboardingGate";
-import { WelcomeTourModal } from "@/components/ui/WelcomeTourModal";
+import { SpotlightTour } from "@/components/ui/SpotlightTour";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -42,7 +42,7 @@ export default function RootLayout({
                             {children}
                         </OnboardingGate>
                         <MobileNav />
-                        <WelcomeTourModal />
+                        <SpotlightTour />
                     </ToastProvider>
                 </AuthProvider>
             </body>

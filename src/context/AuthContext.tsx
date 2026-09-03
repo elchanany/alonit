@@ -62,11 +62,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .then(async (result) => {
                 if (result && result.user) {
                     console.log("Redirect login successful:", result.user.email);
+                    setUser(result.user);
                     router.push('/');
                 }
             })
-            .catch((error) => {
+            .catch((error: any) => {
                 console.error("Redirect sign-in error:", error);
+                if (error?.code === 'auth/unauthorized-domain') {
+                    alert(`דומיין לא מורשה ב-Firebase: ${typeof window !== 'undefined' ? window.location.hostname : ''}\nיש להוסיף את הדומיין ב-Firebase Console -> Authentication -> Settings -> Authorized domains.`);
+                }
             });
 
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -153,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
             const result = await signInWithPopup(auth, provider);
             console.log("Google Sign In Success:", result.user.email);
+            setUser(result.user);
 
             // Create user profile if it doesn't exist
             const existingProfile = await getUserProfile(result.user.uid);
